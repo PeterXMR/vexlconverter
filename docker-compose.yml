@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: btc_postgres
+    environment:
+      POSTGRES_DB: btc_converter
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d btc_converter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: btc_backend
+    environment:
+      DATABASE_URL: postgresql://user:user@postgres:5432/btc_converter
+      FLASK_ENV: development
+      FLASK_PORT: 5001
+      COINGECKO_API_URL: https://api.coingecko.com/api/v3/simple/price
+      PRICE_UPDATE_INTERVAL: 300
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+
+volumes:
+  postgres_data:
+

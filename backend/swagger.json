@@ -1,0 +1,256 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Vexl Converter API",
+    "version": "0.0.1",
+    "description": "API for converting Bitcoin to USD and EUR with real-time prices"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5001",
+      "description": "Development server"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Check if the API is running",
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "0.0.1"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prices/latest": {
+      "get": {
+        "summary": "Get latest BTC prices",
+        "description": "Retrieve the most recent Bitcoin prices in USD and EUR from database",
+        "responses": {
+          "200": {
+            "description": "Latest BTC prices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "btc_usd": {
+                          "type": "number",
+                          "format": "float",
+                          "example": 97345.00
+                        },
+                        "btc_eur": {
+                          "type": "number",
+                          "format": "float",
+                          "example": 91267.00
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2025-12-10T12:34:56"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No price data available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "No price data available"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/convert": {
+      "post": {
+        "summary": "Convert BTC to USD and EUR",
+        "description": "Convert a BTC amount to its USD and EUR equivalent using latest rates",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["btc_amount"],
+                "properties": {
+                  "btc_amount": {
+                    "type": "number",
+                    "format": "float",
+                    "example": 0.01,
+                    "description": "Amount of Bitcoin to convert"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "btc_amount": {
+                          "type": "number",
+                          "format": "float",
+                          "example": 0.01
+                        },
+                        "usd_amount": {
+                          "type": "number",
+                          "format": "float",
+                          "example": 973.45
+                        },
+                        "eur_amount": {
+                          "type": "number",
+                          "format": "float",
+                          "example": 912.67
+                        },
+                        "rates": {
+                          "type": "object",
+                          "properties": {
+                            "btc_usd": {
+                              "type": "number",
+                              "format": "float",
+                              "example": 97345.00
+                            },
+                            "btc_eur": {
+                              "type": "number",
+                              "format": "float",
+                              "example": 91267.00
+                            }
+                          }
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2025-12-10T12:34:56"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "BTC amount must be greater than 0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No price data available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "No price data available"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

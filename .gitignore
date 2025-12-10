@@ -1,0 +1,49 @@
+# Python
+postgres_data/
+# Docker
+
+logs/
+*.log
+# Logs
+
+/frontend/.env.production.local
+/frontend/.env.test.local
+/frontend/.env.development.local
+/frontend/.env.local
+/frontend/build
+# React
+
+.pnpm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+npm-debug.log*
+node_modules/
+# Node
+
+.DS_Store
+*.swo
+*.swp
+.vscode/
+.idea/
+# IDEs
+
+*.sqlite
+*.db
+# Database
+
+.env.local
+.env
+# Environment variables
+
+build/
+dist/
+*.egg-info/
+ENV/
+env/
+venv/
+.Python
+*.so
+*$py.class
+*.py[cod]
+__pycache__/
+
