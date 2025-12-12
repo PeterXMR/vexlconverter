@@ -2,17 +2,35 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+
+    - name: Build Docker images with docker-compose
+      run: docker-compose build
+
+    - name: Start services
+      run: docker-compose up -d
+
+    - name: Wait for services to be ready
+      run: sleep 15
+
+    - name: Check backend health
+      run: |
+        curl -f http://localhost:5001/api/health || exit 1
+        echo "✅ Backend is healthy"
+
+    - name: Check service logs
+      if: failure()
+      run: docker-compose logs
+
+    - name: Stop services
+      if: always()
+      run: docker-compose down
