@@ -260,7 +260,6 @@ docker-compose down
 ## 📚 Documentation
 
 - **TODO.txt**: Step-by-step implementation guide
-- **PROJECT_SUMMARY.md**: Architecture and data flow
 - **This README**: Quick start and usage
 
 ## 📄 License
