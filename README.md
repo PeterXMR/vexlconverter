@@ -92,7 +92,6 @@ PythonProject/
 │   └── init.sql           # PostgreSQL schema
 ├── docker-compose.yml     # Docker configuration
 ├── TODO.txt              # Implementation guide
-├── PROJECT_SUMMARY.md    # Architecture overview
 └── README.md             # This file
 ```
 
