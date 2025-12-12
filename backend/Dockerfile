@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Make entrypoint script executable
+# Ensure entrypoint script has execute permission
 RUN chmod +x entrypoint.sh
 
 # Set environment variables
