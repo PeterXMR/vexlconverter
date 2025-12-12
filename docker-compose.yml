@@ -36,6 +36,17 @@ services:
     volumes:
       - ./backend:/app
 
+  frontend:
+    build: ./frontend
+    container_name: btc_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001
+
 volumes:
   postgres_data:
 

@@ -45,8 +45,8 @@ fi
 echo ""
 
 # Step 4: Wait for services to be ready
-echo "⏳ Step 4: Wait for services to be ready (15 seconds)"
-sleep 15
+echo "⏳ Step 4: Wait for services to be ready (20 seconds)"
+sleep 20
 echo ""
 
 # Step 5: Check backend health
@@ -54,34 +54,52 @@ echo "🏥 Step 5: Check backend health"
 if curl -f http://localhost:5001/api/health; then
     echo ""
     echo "✅ Backend is healthy"
-    HEALTH_CHECK_PASSED=true
+    BACKEND_CHECK_PASSED=true
 else
     echo ""
     echo "❌ Backend health check failed"
-    HEALTH_CHECK_PASSED=false
+    BACKEND_CHECK_PASSED=false
 fi
 echo ""
 
-# Step 6: Show logs if failed
-if [ "$HEALTH_CHECK_PASSED" = false ]; then
-    echo "📋 Step 6: Check service logs (because health check failed)"
+# Step 6: Check frontend availability
+echo "🌐 Step 6: Check frontend availability"
+if curl -f http://localhost:3000 > /dev/null 2>&1; then
+    echo "✅ Frontend is serving"
+    FRONTEND_CHECK_PASSED=true
+else
+    echo "❌ Frontend check failed"
+    FRONTEND_CHECK_PASSED=false
+fi
+echo ""
+
+# Step 7: Show logs if failed
+if [ "$BACKEND_CHECK_PASSED" = false ] || [ "$FRONTEND_CHECK_PASSED" = false ]; then
+    echo "📋 Step 7: Check service logs (because checks failed)"
     $DOCKER_COMPOSE logs
     echo ""
 fi
 
-# Step 7: Stop services
-echo "🛑 Step 7: Stop services"
+# Step 8: Stop services
+echo "🛑 Step 8: Stop services"
 $DOCKER_COMPOSE down
 echo ""
 
 # Final result
 echo "=============================================="
-if [ "$HEALTH_CHECK_PASSED" = true ]; then
+if [ "$BACKEND_CHECK_PASSED" = true ] && [ "$FRONTEND_CHECK_PASSED" = true ]; then
     echo "✅ Workflow test PASSED"
+    echo "Backend and Frontend are healthy!"
     echo "Your workflow will work on GitHub Actions!"
     exit 0
 else
     echo "❌ Workflow test FAILED"
+    if [ "$BACKEND_CHECK_PASSED" = false ]; then
+        echo "  - Backend check failed"
+    fi
+    if [ "$FRONTEND_CHECK_PASSED" = false ]; then
+        echo "  - Frontend check failed"
+    fi
     echo "Fix the issues before pushing to GitHub"
     exit 1
 fi

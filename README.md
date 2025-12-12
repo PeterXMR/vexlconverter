@@ -16,14 +16,38 @@ A simple, real-time Bitcoin price converter with PostgreSQL database backend, Fl
 ### Prerequisites
 
 - Docker & Docker Compose
-- Python 3.11+
-- Node.js 18+
-- npm
+- (Optional) Python 3.11+ for local backend development
+- (Optional) Node.js 18+ for local frontend development
 
-### 1. Start PostgreSQL Database
+### Option 1: Full Docker Setup (Recommended)
+
+Start all services with Docker (PostgreSQL + Backend + Frontend):
 
 ```bash
-docker-compose up -d postgres
+docker compose up --build
+```
+
+Or run in background:
+```bash
+docker compose up -d --build
+```
+
+Access the application:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:5001
+- **Swagger Docs**: http://localhost:5001/api/docs
+
+Stop all services:
+```bash
+docker compose down
+```
+
+### Option 2: Local Development Setup
+
+**1. Start PostgreSQL Database**
+
+```bash
+docker compose up -d postgres
 ```
 
 Verify it's running:
@@ -31,7 +55,7 @@ Verify it's running:
 docker ps | grep btc_postgres
 ```
 
-### 2. Start Backend (Flask API)
+**2. Start Backend (Flask API)**
 
 ```bash
 cd backend
@@ -41,7 +65,7 @@ python app.py
 
 The backend will start on http://localhost:5001 and immediately fetch BTC prices.
 
-### 3. Start Frontend (React)
+**3. Start Frontend (React)**
 
 ```bash
 cd frontend
@@ -79,6 +103,8 @@ PythonProject/
 │   ├── models.py           # SQLAlchemy database models
 │   ├── scheduler.py        # Background price updater
 │   ├── requirements.txt    # Python dependencies
+│   ├── Dockerfile          # Backend container config
+│   ├── entrypoint.sh       # Container startup script
 │   └── .env               # Environment configuration
 ├── frontend/
 │   ├── src/
@@ -87,11 +113,14 @@ PythonProject/
 │   │   └── components/
 │   │       ├── Converter.js    # Main converter UI
 │   │       └── Converter.css   # Converter styles
-│   └── package.json       # npm dependencies
+│   ├── package.json       # npm dependencies
+│   └── Dockerfile         # Frontend container config
 ├── database/
 │   └── init.sql           # PostgreSQL schema
-├── docker-compose.yml     # Docker configuration
-├── TODO.txt              # Implementation guide
+├── .github/workflows/
+│   └── docker-image.yml   # CI/CD workflow
+├── docker-compose.yml     # Multi-container orchestration
+├── test-workflow.sh       # Local CI/CD testing script
 └── README.md             # This file
 ```
 

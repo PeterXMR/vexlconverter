@@ -13,19 +13,24 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build Docker images with docker compose
+    - name: Build all Docker images with docker compose
       run: docker compose build
 
-    - name: Start services
+    - name: Start all services
       run: docker compose up -d
 
     - name: Wait for services to be ready
-      run: sleep 15
+      run: sleep 20
 
     - name: Check backend health
       run: |
         curl -f http://localhost:5001/api/health || exit 1
         echo "✅ Backend is healthy"
+
+    - name: Check frontend availability
+      run: |
+        curl -f http://localhost:3000 || exit 1
+        echo "✅ Frontend is serving"
 
     - name: Check service logs
       if: failure()
