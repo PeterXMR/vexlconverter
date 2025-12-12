@@ -13,11 +13,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build Docker images with docker-compose
-      run: docker-compose build
+    - name: Build Docker images with docker compose
+      run: docker compose build
 
     - name: Start services
-      run: docker-compose up -d
+      run: docker compose up -d
 
     - name: Wait for services to be ready
       run: sleep 15
@@ -29,8 +29,8 @@ jobs:
 
     - name: Check service logs
       if: failure()
-      run: docker-compose logs
+      run: docker compose logs
 
     - name: Stop services
       if: always()
-      run: docker-compose down
+      run: docker compose down

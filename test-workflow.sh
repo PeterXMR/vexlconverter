@@ -7,13 +7,26 @@ echo "🧪 Testing Docker Image CI workflow locally"
 echo "=============================================="
 echo ""
 
+# Detect which docker compose command to use
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+    echo "Using: docker-compose"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+    echo "Using: docker compose (V2)"
+else
+    echo "❌ Neither docker-compose nor docker compose found"
+    exit 1
+fi
+echo ""
+
 # Step 1: Checkout (already done - we're in the repo)
 echo "✓ Step 1: Checkout (using current directory)"
 echo ""
 
-# Step 2: Build Docker images with docker-compose
-echo "📦 Step 2: Build Docker images with docker-compose"
-if docker-compose build; then
+# Step 2: Build Docker images with docker compose
+echo "📦 Step 2: Build Docker images with docker compose"
+if $DOCKER_COMPOSE build; then
     echo "✅ Build successful"
 else
     echo "❌ Build failed"
@@ -23,7 +36,7 @@ echo ""
 
 # Step 3: Start services
 echo "🚀 Step 3: Start services"
-if docker-compose up -d; then
+if $DOCKER_COMPOSE up -d; then
     echo "✅ Services started"
 else
     echo "❌ Failed to start services"
@@ -52,13 +65,13 @@ echo ""
 # Step 6: Show logs if failed
 if [ "$HEALTH_CHECK_PASSED" = false ]; then
     echo "📋 Step 6: Check service logs (because health check failed)"
-    docker-compose logs
+    $DOCKER_COMPOSE logs
     echo ""
 fi
 
 # Step 7: Stop services
 echo "🛑 Step 7: Stop services"
-docker-compose down
+$DOCKER_COMPOSE down
 echo ""
 
 # Final result
