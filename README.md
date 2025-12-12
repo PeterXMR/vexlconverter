@@ -180,6 +180,101 @@ SELECT * FROM btc_prices ORDER BY timestamp DESC LIMIT 5;
 \q
 ```
 
+## 🚢 CI/CD - GitHub Actions
+
+### Automated Testing Workflow
+
+The project includes a GitHub Actions workflow (`.github/workflows/docker-image.yml`) that automatically:
+- ✅ Builds Docker images on every push/PR
+- ✅ Starts all services (backend + PostgreSQL)
+- ✅ Runs health checks
+- ✅ Validates the application works end-to-end
+
+### Test Workflow Locally
+
+Before pushing to GitHub, test the workflow locally:
+
+```bash
+./test-workflow.sh
+```
+
+**What it does:**
+1. Detects docker-compose (V1) or docker compose (V2)
+2. Builds Docker images
+3. Starts services
+4. Waits 15 seconds for initialization
+5. Checks backend health endpoint
+6. Shows logs if anything fails
+7. Cleans up containers
+
+**Expected output:**
+```
+🧪 Testing Docker Image CI workflow locally
+==============================================
+
+Using: docker-compose
+✓ Step 1: Checkout (using current directory)
+📦 Step 2: Build Docker images with docker compose
+✅ Build successful
+🚀 Step 3: Start services
+✅ Services started
+⏳ Step 4: Wait for services to be ready (15 seconds)
+🏥 Step 5: Check backend health
+{"status":"healthy","version":"0.0.1"}
+✅ Backend is healthy
+🛑 Step 7: Stop services
+
+==============================================
+✅ Workflow test PASSED
+Your workflow will work on GitHub Actions!
+```
+
+### Workflow Configuration
+
+The workflow (`.github/workflows/docker-image.yml`) runs on:
+- Every push to `main` or `master` branch
+- Every pull request to `main` or `master` branch
+
+**Workflow steps:**
+```yaml
+- Checkout code
+- Build Docker images (docker compose build)
+- Start services (docker compose up -d)
+- Wait 15 seconds
+- Health check (curl http://localhost:5001/api/health)
+- Show logs on failure
+- Clean up (docker compose down)
+```
+
+### View CI/CD Results
+
+1. Push code to GitHub: `git push origin main`
+2. Go to your repository on GitHub
+3. Click the **"Actions"** tab
+4. See the workflow run in real-time
+5. ✅ Green checkmark = all tests passed
+6. ❌ Red X = tests failed (check logs)
+
+### Docker Compose V2 Compatibility
+
+The workflow uses **Docker Compose V2** (`docker compose` without hyphen) which is the standard on GitHub Actions runners. The test script automatically detects which version you have locally.
+
+**Check your version:**
+```bash
+# V1 (old)
+docker-compose --version
+
+# V2 (new - used by GitHub Actions)
+docker compose version
+```
+
+### CI/CD Best Practices
+
+✅ **Always test locally first**: Run `./test-workflow.sh` before pushing
+✅ **Check logs on failure**: Script shows container logs if health check fails
+✅ **Commit permissions**: entrypoint.sh has execute permissions in git
+✅ **Line endings**: .gitattributes ensures proper Unix line endings
+
 ## 🔧 Configuration
 
 ### Backend Environment (.env)
