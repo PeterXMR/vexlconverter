@@ -1,6 +1,8 @@
 # Vexl Converter MVP v0.0.1
 
 A simple, real-time Bitcoin price converter with PostgreSQL database backend, Flask API, and React frontend.
+<img width="1190" height="835" alt="image" src="https://github.com/user-attachments/assets/95046b85-b814-4578-aac8-d2a956cfde28" />
+
 
 ## 🎯 Features
 
