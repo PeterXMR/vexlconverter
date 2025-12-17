@@ -25,6 +25,7 @@ ENV FLASK_ENV=development
 ENV DB_HOST=postgres
 ENV DB_USER=user
 ENV DB_NAME=btc_converter
+ENV POSTGRES_PASSWORD=changeme
 # Do NOT hardcode sensitive secrets like database passwords in the Dockerfile.
 # Pass the real DB password at runtime (docker run -e POSTGRES_PASSWORD=...) or
 # supply it from your deployment environment / GitHub Secrets instead. If you

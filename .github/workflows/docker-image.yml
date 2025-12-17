@@ -23,7 +23,7 @@ jobs:
       run: |
         set -euo pipefail
         # retry backend health for up to 90s
-        for i in {1..30}; do
+        for i in {1..10}; do
           if curl -fsS http://localhost:5001/api/health >/dev/null 2>&1; then
             echo "✅ Backend is healthy"
             break
