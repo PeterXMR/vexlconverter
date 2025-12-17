@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: btc_converter
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
