@@ -13,11 +13,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Create .env from repo secrets
-      run: |
-        # create a temporary .env file for docker compose; runner workspace is ephemeral
-        printf 'POSTGRES_PASSWORD=%s\nPOSTGRES_USER=user\nPOSTGRES_DB=btc_converter\n' "${{ secrets.POSTGRES_PASSWORD }}" > .env
-
     - name: Build all Docker images with docker compose
       run: docker compose build
 
