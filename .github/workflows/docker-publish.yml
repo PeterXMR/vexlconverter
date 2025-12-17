@@ -17,8 +17,8 @@ concurrency:
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
-  # github.repository as <owner>/<repo> (lowercase, fully-qualified for GHCR)
-  IMAGE_NAME: ghcr.io/${{ toLower(github.repository) }}
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
