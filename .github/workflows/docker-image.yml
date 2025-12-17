@@ -13,31 +13,60 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Create .env from repo secrets
+      run: |
+        # create a temporary .env file for docker compose; runner workspace is ephemeral
+        printf 'POSTGRES_PASSWORD=%s\nPOSTGRES_USER=user\nPOSTGRES_DB=btc_converter\n' "${{ secrets.POSTGRES_PASSWORD }}" > .env
+
     - name: Build all Docker images with docker compose
       run: docker compose build
 
     - name: Start all services
-      env:
-        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       run: docker compose up -d
 
-    - name: Wait for services to be ready
-      run: sleep 20
-
-    - name: Check backend health
+    - name: Wait for backend health (retry)
       run: |
-        curl -f http://localhost:5001/api/health || exit 1
-        echo "✅ Backend is healthy"
+        set -euo pipefail
+        # retry backend health for up to 90s
+        for i in {1..30}; do
+          if curl -fsS http://localhost:5001/api/health >/dev/null 2>&1; then
+            echo "✅ Backend is healthy"
+            break
+          fi
+          echo "Waiting for backend... ($i/30)"
+          sleep 3
+        done
+        if ! curl -fsS http://localhost:5001/api/health >/dev/null 2>&1; then
+          echo "Backend failed to respond; dumping logs"
+          docker compose logs backend || true
+          docker compose down || true
+          exit 1
+        fi
 
-    - name: Check frontend availability
+    - name: Wait for frontend availability (retry)
       run: |
-        curl -f http://localhost:3000 || exit 1
-        echo "✅ Frontend is serving"
+        set -euo pipefail
+        for i in {1..20}; do
+          if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+            echo "✅ Frontend is serving"
+            break
+          fi
+          echo "Waiting for frontend... ($i/20)"
+          sleep 3
+        done
+        if ! curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+          echo "Frontend failed to respond; dumping logs"
+          docker compose logs frontend || true
+          docker compose down || true
+          exit 1
+        fi
 
-    - name: Check service logs
+    - name: Check service logs on failure
       if: failure()
       run: docker compose logs
 
-    - name: Stop services
+    - name: Stop services and cleanup
       if: always()
-      run: docker compose down
+      run: |
+        docker compose down
+        rm -f .env
