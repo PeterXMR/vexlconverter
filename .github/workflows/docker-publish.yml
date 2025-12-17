@@ -15,7 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -66,4 +69,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             PYTHONUNBUFFERED=1
-
