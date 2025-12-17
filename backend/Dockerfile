@@ -25,11 +25,14 @@ ENV FLASK_ENV=development
 ENV DB_HOST=postgres
 ENV DB_USER=user
 ENV DB_NAME=btc_converter
-ENV POSTGRES_PASSWORD=user
+# Do NOT hardcode sensitive secrets like database passwords in the Dockerfile.
+# Pass the real DB password at runtime (docker run -e POSTGRES_PASSWORD=...) or
+# supply it from your deployment environment / GitHub Secrets instead.
+# For local development you can use a harmless placeholder; do not use this in prod.
+ENV POSTGRES_PASSWORD="changeme"
 
 # Expose port
 EXPOSE 5001
 
 # Use entrypoint script
 ENTRYPOINT ["./entrypoint.sh"]
-
