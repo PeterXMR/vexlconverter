@@ -17,6 +17,8 @@ jobs:
       run: docker compose build
 
     - name: Start all services
+      env:
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       run: docker compose up -d
 
     - name: Wait for services to be ready
