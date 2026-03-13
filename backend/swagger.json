@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Vexl Converter API",
-    "version": "0.0.1",
-    "description": "API for converting Bitcoin to USD and EUR with real-time prices"
+    "version": "0.2.0",
+    "description": "Multi-cryptocurrency converter with price alerts, historical charts, and universal conversion"
   },
   "servers": [
     {
@@ -15,22 +15,36 @@
     "/api/health": {
       "get": {
         "summary": "Health check",
-        "description": "Check if the API is running",
         "responses": {
           "200": {
-            "description": "API is healthy",
+            "description": "API is healthy"
+          }
+        }
+      }
+    },
+    "/api/cryptos": {
+      "get": {
+        "summary": "List supported cryptocurrencies",
+        "description": "Returns all supported crypto IDs, symbols, and names",
+        "responses": {
+          "200": {
+            "description": "List of supported cryptos",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "healthy"
-                    },
-                    "version": {
-                      "type": "string",
-                      "example": "0.0.1"
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "example": "bitcoin" },
+                          "symbol": { "type": "string", "example": "BTC" },
+                          "name": { "type": "string", "example": "Bitcoin" }
+                        }
+                      }
                     }
                   }
                 }
@@ -42,215 +56,159 @@
     },
     "/api/prices/latest": {
       "get": {
-        "summary": "Get latest BTC prices",
-        "description": "Retrieve the most recent Bitcoin prices in USD and EUR from database",
-        "responses": {
-          "200": {
-            "description": "Latest BTC prices",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "integer",
-                          "example": 1
-                        },
-                        "btc_usd": {
-                          "type": "number",
-                          "format": "float",
-                          "example": 97345.00
-                        },
-                        "btc_eur": {
-                          "type": "number",
-                          "format": "float",
-                          "example": 91267.00
-                        },
-                        "timestamp": {
-                          "type": "string",
-                          "format": "date-time",
-                          "example": "2025-12-10T12:34:56"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No price data available",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "No price data available"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    }
-                  }
-                }
-              }
-            }
+        "summary": "Get latest price for a cryptocurrency",
+        "parameters": [
+          {
+            "name": "crypto",
+            "in": "query",
+            "schema": { "type": "string", "default": "bitcoin" },
+            "description": "CoinGecko crypto ID"
           }
+        ],
+        "responses": {
+          "200": { "description": "Latest price data" },
+          "400": { "description": "Unknown crypto" },
+          "404": { "description": "No price data available" }
+        }
+      }
+    },
+    "/api/prices/all": {
+      "get": {
+        "summary": "Get latest prices for all supported cryptos",
+        "responses": {
+          "200": { "description": "All latest prices keyed by crypto ID" }
+        }
+      }
+    },
+    "/api/prices/history": {
+      "get": {
+        "summary": "Get historical price data",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["24h", "7d", "30d", "1y"], "default": "24h" }
+          },
+          {
+            "name": "crypto",
+            "in": "query",
+            "schema": { "type": "string", "default": "bitcoin" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Historical price data with timestamps" },
+          "400": { "description": "Invalid period" }
         }
       }
     },
     "/api/convert": {
       "post": {
-        "summary": "Convert BTC to USD and EUR",
-        "description": "Convert a BTC amount to its USD and EUR equivalent using latest rates",
+        "summary": "Convert crypto to fiat",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["btc_amount"],
                 "properties": {
-                  "btc_amount": {
-                    "type": "number",
-                    "format": "float",
-                    "example": 0.01,
-                    "description": "Amount of Bitcoin to convert"
-                  }
+                  "crypto": { "type": "string", "default": "bitcoin" },
+                  "amount": { "type": "number", "example": 0.01 },
+                  "btc_amount": { "type": "number", "description": "Backwards-compatible alias for amount" }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Conversion successful",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "btc_amount": {
-                          "type": "number",
-                          "format": "float",
-                          "example": 0.01
-                        },
-                        "usd_amount": {
-                          "type": "number",
-                          "format": "float",
-                          "example": 973.45
-                        },
-                        "eur_amount": {
-                          "type": "number",
-                          "format": "float",
-                          "example": 912.67
-                        },
-                        "rates": {
-                          "type": "object",
-                          "properties": {
-                            "btc_usd": {
-                              "type": "number",
-                              "format": "float",
-                              "example": 97345.00
-                            },
-                            "btc_eur": {
-                              "type": "number",
-                              "format": "float",
-                              "example": 91267.00
-                            }
-                          }
-                        },
-                        "timestamp": {
-                          "type": "string",
-                          "format": "date-time",
-                          "example": "2025-12-10T12:34:56"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "BTC amount must be greater than 0"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No price data available",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "No price data available"
-                    }
-                  }
+          "200": { "description": "Conversion result with USD and EUR amounts" },
+          "400": { "description": "Invalid input" },
+          "404": { "description": "No price data" }
+        }
+      }
+    },
+    "/api/convert/reverse": {
+      "post": {
+        "summary": "Convert fiat to crypto",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fiat_amount"],
+                "properties": {
+                  "fiat_amount": { "type": "number", "example": 500 },
+                  "fiat_currency": { "type": "string", "enum": ["usd", "eur"], "default": "usd" },
+                  "crypto": { "type": "string", "default": "bitcoin" }
                 }
               }
             }
           }
+        },
+        "responses": {
+          "200": { "description": "Crypto amount equivalent" },
+          "400": { "description": "Invalid input" },
+          "404": { "description": "No price data" }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "List active price alerts",
+        "responses": {
+          "200": { "description": "Array of active (non-triggered) alerts" }
+        }
+      },
+      "post": {
+        "summary": "Create a price alert",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["target_price"],
+                "properties": {
+                  "target_price": { "type": "number", "example": 100000 },
+                  "currency": { "type": "string", "enum": ["usd", "eur"], "default": "usd" },
+                  "direction": { "type": "string", "enum": ["above", "below"], "default": "above" },
+                  "crypto": { "type": "string", "default": "bitcoin" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Alert created" },
+          "400": { "description": "Invalid input" }
+        }
+      }
+    },
+    "/api/alerts/{id}": {
+      "delete": {
+        "summary": "Delete a price alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Alert deleted" },
+          "404": { "description": "Alert not found" }
+        }
+      }
+    },
+    "/api/alerts/triggered": {
+      "get": {
+        "summary": "Get recently triggered alerts",
+        "description": "Returns alerts triggered within the last 60 seconds (for polling)",
+        "responses": {
+          "200": { "description": "Array of triggered alerts" }
         }
       }
     }
   }
 }
-

@@ -1,26 +1,8 @@
 .converter {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 4rem 2rem;
+  padding: 0 2rem 4rem;
 }
-
-.header {
-  text-align: center;
-  margin-bottom: 4rem;
-}
-
-.header h1 {
-  font-size: 4rem;
-  font-weight: 900;
-  margin: 0;
-  background: linear-gradient(135deg, #FC0377 0%, #9400FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-
 
 .error {
   background: rgba(252, 3, 119, 0.1);
@@ -34,7 +16,6 @@
   backdrop-filter: blur(10px);
 }
 
-
 .converter-box {
   background: rgba(20, 20, 20, 0.8);
   border: 2px solid rgba(252, 3, 119, 0.3);
@@ -42,9 +23,9 @@
   border-radius: 32px;
   padding: 3rem;
   box-shadow: 0 20px 80px rgba(0, 0, 0, 0.5);
-  will-change: contents; /* Optimize for content changes */
-  min-height: 520px; /* Reduced from 600px for smaller inputs */
-  contain: layout; /* Isolate layout changes */
+  will-change: contents;
+  min-height: 400px;
+  contain: layout;
 }
 
 .converter-box h2 {
@@ -66,6 +47,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
+  gap: 1rem;
 }
 
 .unit-toggle {
@@ -87,10 +69,6 @@
   box-shadow: 0 8px 20px rgba(252, 3, 119, 0.4);
 }
 
-.unit-toggle:active {
-  transform: translateY(0);
-}
-
 .info-text {
   margin-top: 0.75rem;
   font-size: 0.875rem;
@@ -105,7 +83,7 @@
 
 .output-field {
   margin-bottom: 1.5rem;
-  height: 150px; /* Fixed height instead of min-height */
+  height: 150px;
   display: flex;
   flex-direction: column;
 }
@@ -126,24 +104,8 @@ label {
   color: #FC0377;
 }
 
-input[type="number"],
-input[type="text"].output-input {
-  width: 100%;
-  padding: 1.25rem 1.5rem;
-  font-size: 1.5rem;
-  font-weight: 700;
-  background: rgba(40, 40, 40, 0.8);
-  border: 2px solid rgba(252, 3, 119, 0.3);
-  border-radius: 16px;
-  color: #FFFFFF;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
-  backdrop-filter: blur(10px);
-  height: 64px; /* Fixed height instead of min-height */
-  line-height: 1.5rem;
-}
-
-/* Input field for BTC/Sats amount */
+/* Main input field */
+.converter-input,
 #btc-input {
   width: 100%;
   padding: 1.25rem 1.5rem;
@@ -157,10 +119,11 @@ input[type="text"].output-input {
   box-sizing: border-box;
   backdrop-filter: blur(10px);
   font-family: inherit;
-  height: 64px; /* Fixed height */
+  height: 64px;
   line-height: 1.5rem;
 }
 
+.converter-input:focus,
 #btc-input:focus {
   outline: none;
   border-color: #FC0377;
@@ -168,48 +131,29 @@ input[type="text"].output-input {
   box-shadow: 0 0 0 4px rgba(252, 3, 119, 0.1);
 }
 
-/* Keep focus styling even during state updates */
-#btc-input:focus-within {
-  border-color: #FC0377;
-  background: rgba(50, 50, 50, 0.9);
-  box-shadow: 0 0 0 4px rgba(252, 3, 119, 0.1);
-}
-
-/* Maintain interactivity */
-#btc-input:not(:disabled) {
-  pointer-events: auto;
-  cursor: text;
-}
-
-input[type="number"]:focus {
-  outline: none;
-  border-color: #FC0377;
-  background: rgba(50, 50, 50, 0.9);
-  box-shadow: 0 0 0 4px rgba(252, 3, 119, 0.1);
-}
-
-input[type="text"] {
-  background: rgba(30, 30, 30, 0.8);
+/* Output fields */
+input[type="text"].output-input {
+  width: 100%;
+  padding: 1.25rem 1.5rem;
+  font-size: 1.5rem;
   font-weight: 800;
+  background: rgba(30, 30, 30, 0.8);
+  border: 2px solid rgba(252, 3, 119, 0.3);
+  border-radius: 16px;
   color: #FC0377;
+  box-sizing: border-box;
+  backdrop-filter: blur(10px);
+  height: 64px;
+  line-height: 1.5rem;
   cursor: default;
-  min-height: 60px; /* Prevent height changes */
-}
-
-/* Output values should not transition to prevent flicker */
-.output-input {
-  transition: none !important; /* Remove all transitions from output */
+  transition: none;
 }
 
 input::placeholder {
   color: rgba(255, 255, 255, 0.3);
 }
 
-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+/* Arrow / swap button */
 .arrow {
   text-align: center;
   font-size: 2.5rem;
@@ -218,12 +162,23 @@ input:disabled {
   font-weight: 700;
 }
 
+.swap-arrow {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+.swap-arrow:hover {
+  transform: scale(1.2);
+  text-shadow: 0 0 20px rgba(252, 3, 119, 0.5);
+}
+
 .output-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
-  transform: translateZ(0); /* Force GPU acceleration */
-  backface-visibility: hidden; /* Prevent flicker */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .btc-rate {
@@ -236,12 +191,12 @@ input:disabled {
   background: rgba(252, 3, 119, 0.05);
   border-radius: 8px;
   border: 1px solid rgba(252, 3, 119, 0.2);
-  height: 40px; /* Fixed height instead of min-height */
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  white-space: nowrap; /* Prevent text wrapping */
-  overflow: hidden; /* Hide overflow */
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .loading {
@@ -260,7 +215,47 @@ input:disabled {
   50% { opacity: 0.5; }
 }
 
-/* Remove number input spinners */
+/* Dropdowns */
+.crypto-dropdown,
+.type-dropdown {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: rgba(40, 40, 40, 0.9);
+  border: 2px solid rgba(252, 3, 119, 0.3);
+  border-radius: 12px;
+  color: #FFFFFF;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.crypto-dropdown:focus,
+.type-dropdown:focus {
+  outline: none;
+  border-color: #FC0377;
+  box-shadow: 0 0 0 4px rgba(252, 3, 119, 0.1);
+}
+
+.crypto-dropdown option,
+.type-dropdown option {
+  background: #1a1a1a;
+  color: #FFFFFF;
+}
+
+.type-and-select {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.type-dropdown {
+  min-width: 85px;
+  background: linear-gradient(135deg, rgba(252, 3, 119, 0.15) 0%, rgba(148, 0, 255, 0.15) 100%);
+  border-color: rgba(148, 0, 255, 0.4);
+}
+
+/* Number input spinner removal */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -278,14 +273,8 @@ input[type="number"] {
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .output-field-additional {
@@ -418,7 +407,7 @@ input[type="number"] {
   font-weight: 700;
 }
 
-/* Scrollbar styling for currency picker */
+/* Scrollbar */
 .currency-picker::-webkit-scrollbar {
   width: 8px;
 }
@@ -437,7 +426,7 @@ input[type="number"] {
   background: rgba(252, 3, 119, 0.7);
 }
 
-/* Footer with version and last update info */
+/* Footer */
 .footer {
   margin-top: 3rem;
   text-align: center;
@@ -467,24 +456,29 @@ input[type="number"] {
 
 @media (max-width: 768px) {
   .converter {
-    padding: 2rem 1rem;
-  }
-
-  .header h1 {
-    font-size: 2.5rem;
+    padding: 0 1rem 2rem;
   }
 
   .output-section {
     grid-template-columns: 1fr;
   }
 
-
   .converter-box {
     padding: 2rem 1.5rem;
   }
 
-  input[type="number"],
-  input[type="text"] {
-    font-size: 1.25rem;
+  .input-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .type-and-select {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .crypto-dropdown,
+  .type-dropdown {
+    width: 100%;
   }
 }

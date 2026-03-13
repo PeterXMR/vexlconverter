@@ -1,0 +1,51 @@
+.mode-switch {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(30, 30, 30, 0.8);
+  border-radius: 16px;
+  padding: 4px;
+  margin-bottom: 2.5rem;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid rgba(252, 3, 119, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #666666;
+  padding: 0.625rem 1rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mode-btn:hover:not(.active) {
+  color: #AAAAAA;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #FC0377 0%, #9400FF 100%);
+  color: #FFFFFF;
+  box-shadow: 0 4px 15px rgba(252, 3, 119, 0.35);
+}
+
+@media (max-width: 768px) {
+  .mode-switch {
+    max-width: 100%;
+  }
+
+  .mode-btn {
+    padding: 0.5rem 0.5rem;
+    font-size: 0.75rem;
+  }
+}
