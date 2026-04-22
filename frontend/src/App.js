@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import ModeSwitch from './components/ModeSwitch';
 import Converter from './components/Converter';
-import AlertManager from './components/AlertManager';
-import PriceChart from './components/PriceChart';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
+
+const AlertManager = lazy(() => import('./components/AlertManager'));
+const PriceChart = lazy(() => import('./components/PriceChart'));
 
 function App() {
   const [mode, setMode] = useState('btc');
@@ -14,10 +16,20 @@ function App() {
         <h1>Vexl Converter</h1>
       </div>
       <ModeSwitch mode={mode} onModeChange={setMode} />
-      <Converter mode={mode} />
+      <ErrorBoundary>
+        <Converter mode={mode} />
+      </ErrorBoundary>
       <div className="extra-sections">
-        <PriceChart />
-        <AlertManager />
+        <ErrorBoundary>
+          <Suspense fallback={<div>Loading…</div>}>
+            <PriceChart />
+          </Suspense>
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <Suspense fallback={<div>Loading…</div>}>
+            <AlertManager />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
   );

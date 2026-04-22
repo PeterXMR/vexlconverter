@@ -255,3 +255,22 @@
     max-width: none;
   }
 }
+
+.alert-enable-notifications-btn {
+  display: block;
+  margin: 0 auto 1.5rem;
+  padding: 0.625rem 1.25rem;
+  background: linear-gradient(135deg, rgba(252, 3, 119, 0.2) 0%, rgba(148, 0, 255, 0.2) 100%);
+  border: 1px solid rgba(148, 0, 255, 0.4);
+  color: #FFFFFF;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.alert-enable-notifications-btn:hover {
+  border-color: #9400FF;
+  background: linear-gradient(135deg, rgba(252, 3, 119, 0.3) 0%, rgba(148, 0, 255, 0.3) 100%);
+}

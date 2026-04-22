@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Run from the repo root regardless of where the script is invoked from
+cd "$(dirname "$0")/.." || exit 1
+
 echo "🚀 Vexl Converter - Fresh Docker Setup"
 echo "=========================================="
 echo ""

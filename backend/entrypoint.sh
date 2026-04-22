@@ -13,6 +13,9 @@ done
 
 echo "PostgreSQL is up - starting application"
 
-# Start the Flask application
-exec python app.py
+# Start the Flask application with gunicorn.
+# --preload ensures APScheduler runs in the master only (no duplicate jobs).
+# --config gunicorn.conf.py disposes the forked engine per worker to avoid
+# shared-connection races (ResourceClosedError).
+exec gunicorn --config gunicorn.conf.py --preload --workers 2 --bind 0.0.0.0:5001 --access-logfile - --error-logfile - app:app
 

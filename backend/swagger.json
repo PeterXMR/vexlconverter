@@ -209,6 +209,34 @@
           "200": { "description": "Array of triggered alerts" }
         }
       }
+    },
+    "/api/alerts/ack": {
+      "post": {
+        "summary": "Acknowledge triggered alerts",
+        "description": "Marks triggered alerts as seen by the client so they stop appearing in the triggered list.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ids"],
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": { "type": "integer" },
+                    "example": [1, 2, 3]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Acknowledgement count returned" },
+          "400": { "description": "ids array missing or empty" }
+        }
+      }
     }
   }
 }

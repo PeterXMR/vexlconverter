@@ -25,7 +25,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 const PERIODS = [
   { key: '24h', label: '24H' },
@@ -161,7 +161,8 @@ function PriceChart() {
           color: '#666666',
           font: { size: 11 },
           callback: function (value) {
-            return '$' + value.toLocaleString();
+            const symbol = showUSD ? '$' : showEUR ? '\u20AC' : '';
+            return symbol + value.toLocaleString();
           },
         },
       },

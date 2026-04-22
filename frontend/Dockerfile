@@ -1,25 +1,15 @@
-FROM node:18-alpine
-
+FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Copy package files
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install --production
-
-# Copy application files
+RUN npm ci
 COPY . .
-
-# Build the React app
 RUN npm run build
 
-# Install serve to run the production build
-RUN npm install -g serve
-
-# Expose port 3000
-EXPOSE 3000
-
-# Start the app
-CMD ["serve", "-s", "build", "-l", "3000"]
-
+FROM nginx:alpine
+COPY --from=builder /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+# Note: master runs as root to bind port 80; workers drop to nginx user (default behaviour)
+HEALTHCHECK CMD wget -q --spider http://localhost:80/ || exit 1

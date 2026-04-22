@@ -3,6 +3,9 @@
 # Test script that mimics the GitHub Actions workflow locally
 # This runs the same steps as .github/workflows/docker-image.yml
 
+# Run from the repo root regardless of where the script is invoked from
+cd "$(dirname "$0")/.." || exit 1
+
 echo "🧪 Testing Docker Image CI workflow locally"
 echo "=============================================="
 echo ""

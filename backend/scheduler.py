@@ -3,7 +3,7 @@ import os
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from models import BTCPrice, CryptoPrice, PriceAlert, SessionLocal, SUPPORTED_CRYPTOS
-from datetime import datetime
+from datetime import datetime, timezone
 
 COINGECKO_API = os.getenv('COINGECKO_API_URL',
                           'https://api.coingecko.com/api/v3/simple/price')
@@ -28,7 +28,7 @@ def fetch_and_store_prices():
             db = None
             try:
                 db = SessionLocal()
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
 
                 for crypto_id in SUPPORTED_CRYPTOS:
                     if crypto_id not in data:
@@ -117,7 +117,7 @@ def check_price_alerts(price_data):
                     PriceAlert.id == alert.id
                 ).update({
                     PriceAlert.is_triggered: True,
-                    PriceAlert.triggered_at: datetime.utcnow(),
+                    PriceAlert.triggered_at: datetime.now(timezone.utc),
                 })
                 triggered_count += 1
 
