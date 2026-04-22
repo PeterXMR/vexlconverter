@@ -407,7 +407,7 @@ def get_alerts():
                 PriceAlert.created_at,
                 PriceAlert.triggered_at,
             ).filter(
-                PriceAlert.is_triggered == False
+                PriceAlert.is_triggered.is_(False)
             ).order_by(PriceAlert.created_at.desc()).all()
 
         data = [{
@@ -459,8 +459,8 @@ def get_triggered_alerts():
                 PriceAlert.direction,
                 PriceAlert.triggered_at,
             ).filter(
-                PriceAlert.is_triggered == True,
-                PriceAlert.seen_by_client == False
+                PriceAlert.is_triggered.is_(True),
+                PriceAlert.seen_by_client.is_(False)
             ).all()
 
         data = [{
@@ -494,7 +494,7 @@ def acknowledge_alerts():
         with get_db() as db:
             updated = db.query(PriceAlert).filter(
                 PriceAlert.id.in_(alert_ids),
-                PriceAlert.is_triggered == True
+                PriceAlert.is_triggered.is_(True)
             ).update({
                 PriceAlert.seen_by_client: True
             }, synchronize_session=False)

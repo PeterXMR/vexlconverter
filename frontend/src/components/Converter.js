@@ -496,31 +496,37 @@ function Converter({ mode }) {
         </div>
       </div>
 
-      {additionalCurrencies.map((currency) => (
-        <div key={currency.code} className="output-section additional-currency">
-          <div className="output-field output-field-additional">
-            <label>
-              <span className="icon">{currency.symbol}</span>
-              {currency.name} ({currency.code})
-              <button className="remove-currency-btn" onClick={() => removeCurrency(currency.code)} type="button" title="Remove">✕</button>
-            </label>
-            <input
-              type="text"
-              className="output-input"
-              value={currency.amount ?? (currency.rate === null ? 'Rate unavailable' : '\u00A0')}
-              readOnly
-              placeholder="0.00"
-            />
-            <div className="btc-rate">
-              {currency.rate > 0
-                ? `1 BTC = ${currency.symbol}${formatNumber(currency.rate)}`
-                : currency.rate === null
-                  ? 'Rate provider has no data for this currency'
-                  : '\u00A0'}
+      {additionalCurrencies.length > 0 && (
+        <div className="additional-currencies-grid">
+          {additionalCurrencies.map((currency) => (
+            <div key={currency.code} className="additional-currency">
+              <div className="output-field output-field-additional">
+                <label>
+                  <span className="currency-label">
+                    <span className="icon">{currency.symbol}</span>
+                    {currency.code}
+                  </span>
+                  <button className="remove-currency-btn" onClick={() => removeCurrency(currency.code)} type="button" title="Remove">✕</button>
+                </label>
+                <input
+                  type="text"
+                  className="output-input"
+                  value={currency.amount ?? (currency.rate === null ? 'Rate unavailable' : '\u00A0')}
+                  readOnly
+                  placeholder="0.00"
+                />
+                <div className="btc-rate">
+                  {currency.rate > 0
+                    ? `1 BTC = ${currency.symbol}${formatNumber(currency.rate)}`
+                    : currency.rate === null
+                      ? 'No rate available'
+                      : '\u00A0'}
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
       <div className="add-currency-section">
         <button className="add-currency-btn" onClick={() => setShowCurrencyPicker(!showCurrencyPicker)} type="button">
@@ -554,91 +560,93 @@ function Converter({ mode }) {
     <div className="converter-box">
       <h2>Crypto to Crypto</h2>
 
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">⟠</span>
-            From
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={sourceCrypto}
+      <div className="convert-row">
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">⟠</span>
+              From
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={sourceCrypto}
+              onChange={(e) => {
+                setSourceCrypto(e.target.value);
+                setCryptoSourceAmount('');
+                setCryptoTargetAmount('');
+              }}
+            >
+              {cryptos.map(c => (
+                <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            inputMode="decimal"
+            className="converter-input"
+            value={cryptoSourceAmount}
             onChange={(e) => {
-              setSourceCrypto(e.target.value);
-              setCryptoSourceAmount('');
-              setCryptoTargetAmount('');
+              if (e.target.value === '' || /^\d*\.?\d{0,8}$/.test(e.target.value)) {
+                handleCryptoConvert(e.target.value);
+              }
             }}
-          >
-            {cryptos.map(c => (
-              <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
-            ))}
-          </select>
+            placeholder="0.00"
+            autoComplete="off"
+            autoFocus
+          />
+          {allPrices[sourceCrypto] && (
+            <div className="info-text">
+              1 {getCryptoSymbol(sourceCrypto)} = ${formatNumber(allPrices[sourceCrypto].price_usd)}
+            </div>
+          )}
         </div>
-        <input
-          type="text"
-          inputMode="decimal"
-          className="converter-input"
-          value={cryptoSourceAmount}
-          onChange={(e) => {
-            if (e.target.value === '' || /^\d*\.?\d{0,8}$/.test(e.target.value)) {
-              handleCryptoConvert(e.target.value);
-            }
+
+        <button
+          type="button"
+          className="arrow swap-arrow"
+          onClick={() => {
+            const tmp = sourceCrypto;
+            setSourceCrypto(targetCrypto);
+            setTargetCrypto(tmp);
+            setCryptoSourceAmount('');
+            setCryptoTargetAmount('');
           }}
-          placeholder="0.00"
-          autoComplete="off"
-          autoFocus
-        />
-        {allPrices[sourceCrypto] && (
-          <div className="info-text">
-            1 {getCryptoSymbol(sourceCrypto)} = ${formatNumber(allPrices[sourceCrypto].price_usd)}
+          aria-label="Swap currencies"
+        >⇅</button>
+
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">⟠</span>
+              To
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={targetCrypto}
+              onChange={(e) => {
+                setTargetCrypto(e.target.value);
+                if (cryptoSourceAmount) handleCryptoConvert(cryptoSourceAmount);
+              }}
+            >
+              {cryptos.map(c => (
+                <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
+              ))}
+            </select>
           </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        className="arrow swap-arrow"
-        onClick={() => {
-          const tmp = sourceCrypto;
-          setSourceCrypto(targetCrypto);
-          setTargetCrypto(tmp);
-          setCryptoSourceAmount('');
-          setCryptoTargetAmount('');
-        }}
-        aria-label="Swap currencies"
-      >⇅</button>
-
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">⟠</span>
-            To
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={targetCrypto}
-            onChange={(e) => {
-              setTargetCrypto(e.target.value);
-              if (cryptoSourceAmount) handleCryptoConvert(cryptoSourceAmount);
-            }}
-          >
-            {cryptos.map(c => (
-              <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
-            ))}
-          </select>
+          <input
+            type="text"
+            className="output-input"
+            value={cryptoTargetAmount || '\u00A0'}
+            readOnly
+            placeholder="0.00"
+          />
+          {allPrices[sourceCrypto] && allPrices[targetCrypto] && (
+            <div className="btc-rate">
+              1 {getCryptoSymbol(sourceCrypto)} = {(allPrices[sourceCrypto].price_usd / allPrices[targetCrypto].price_usd).toFixed(6).replace(/\.?0+$/, '')} {getCryptoSymbol(targetCrypto)}
+            </div>
+          )}
         </div>
-        <input
-          type="text"
-          className="output-input"
-          value={cryptoTargetAmount || '\u00A0'}
-          readOnly
-          placeholder="0.00"
-        />
-        {allPrices[sourceCrypto] && allPrices[targetCrypto] && (
-          <div className="btc-rate">
-            1 {getCryptoSymbol(sourceCrypto)} = {(allPrices[sourceCrypto].price_usd / allPrices[targetCrypto].price_usd).toFixed(6).replace(/\.?0+$/, '')} {getCryptoSymbol(targetCrypto)}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -647,81 +655,83 @@ function Converter({ mode }) {
     <div className="converter-box">
       <h2>Fiat to Fiat</h2>
 
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">{getFiatSymbol(sourceFiat)}</span>
-            From
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={sourceFiat}
+      <div className="convert-row">
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">{getFiatSymbol(sourceFiat)}</span>
+              From
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={sourceFiat}
+              onChange={(e) => {
+                setSourceFiat(e.target.value);
+                setFiatSourceAmount('');
+                setFiatTargetAmount('');
+              }}
+            >
+              {FIAT_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            inputMode="decimal"
+            className="converter-input"
+            value={fiatSourceAmount}
             onChange={(e) => {
-              setSourceFiat(e.target.value);
-              setFiatSourceAmount('');
-              setFiatTargetAmount('');
+              if (e.target.value === '' || /^\d*\.?\d{0,2}$/.test(e.target.value)) {
+                handleFiatConvert(e.target.value);
+              }
             }}
-          >
-            {FIAT_CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-            ))}
-          </select>
+            placeholder="0.00"
+            autoComplete="off"
+            autoFocus
+          />
         </div>
-        <input
-          type="text"
-          inputMode="decimal"
-          className="converter-input"
-          value={fiatSourceAmount}
-          onChange={(e) => {
-            if (e.target.value === '' || /^\d*\.?\d{0,2}$/.test(e.target.value)) {
-              handleFiatConvert(e.target.value);
-            }
+
+        <button
+          type="button"
+          className="arrow swap-arrow"
+          onClick={() => {
+            const tmp = sourceFiat;
+            setSourceFiat(targetFiat);
+            setTargetFiat(tmp);
+            setFiatSourceAmount('');
+            setFiatTargetAmount('');
           }}
-          placeholder="0.00"
-          autoComplete="off"
-          autoFocus
-        />
-      </div>
+          aria-label="Swap currencies"
+        >⇅</button>
 
-      <button
-        type="button"
-        className="arrow swap-arrow"
-        onClick={() => {
-          const tmp = sourceFiat;
-          setSourceFiat(targetFiat);
-          setTargetFiat(tmp);
-          setFiatSourceAmount('');
-          setFiatTargetAmount('');
-        }}
-        aria-label="Swap currencies"
-      >⇅</button>
-
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">{getFiatSymbol(targetFiat)}</span>
-            To
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={targetFiat}
-            onChange={(e) => {
-              setTargetFiat(e.target.value);
-              if (fiatSourceAmount) handleFiatConvert(fiatSourceAmount);
-            }}
-          >
-            {FIAT_CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-            ))}
-          </select>
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">{getFiatSymbol(targetFiat)}</span>
+              To
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={targetFiat}
+              onChange={(e) => {
+                setTargetFiat(e.target.value);
+                if (fiatSourceAmount) handleFiatConvert(fiatSourceAmount);
+              }}
+            >
+              {FIAT_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            className="output-input"
+            value={fiatTargetAmount || '\u00A0'}
+            readOnly
+            placeholder="0.00"
+          />
         </div>
-        <input
-          type="text"
-          className="output-input"
-          value={fiatTargetAmount || '\u00A0'}
-          readOnly
-          placeholder="0.00"
-        />
       </div>
     </div>
   );
@@ -739,6 +749,7 @@ function Converter({ mode }) {
       <div className="converter-box">
         <h2>Universal Converter</h2>
 
+        <div className="convert-row">
         <div className="input-section">
           <div className="input-header">
             <label>
@@ -840,6 +851,7 @@ function Converter({ mode }) {
             readOnly
             placeholder="0.00"
           />
+        </div>
         </div>
       </div>
     );

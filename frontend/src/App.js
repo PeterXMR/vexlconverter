@@ -11,26 +11,34 @@ function App() {
   const [mode, setMode] = useState('btc');
 
   return (
-    <div className="App">
-      <div className="header">
-        <h1>Vexl Converter</h1>
-      </div>
-      <ModeSwitch mode={mode} onModeChange={setMode} />
-      <ErrorBoundary>
-        <Converter mode={mode} />
-      </ErrorBoundary>
-      <div className="extra-sections">
-        <ErrorBoundary>
-          <Suspense fallback={<div>Loading…</div>}>
-            <PriceChart />
-          </Suspense>
-        </ErrorBoundary>
-        <ErrorBoundary>
-          <Suspense fallback={<div>Loading…</div>}>
-            <AlertManager />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="wordmark">
+          Vexl Converter <small>v0.2.0</small>
+        </div>
+        <ModeSwitch mode={mode} onModeChange={setMode} />
+      </header>
+      <main className="workspace">
+        <section className="convert-pane">
+          <ErrorBoundary>
+            <Converter mode={mode} />
+          </ErrorBoundary>
+        </section>
+        <section className="chart-pane">
+          <ErrorBoundary>
+            <Suspense fallback={<div className="panel">Loading chart…</div>}>
+              <PriceChart />
+            </Suspense>
+          </ErrorBoundary>
+        </section>
+        <section className="alerts-pane">
+          <ErrorBoundary>
+            <Suspense fallback={<div className="panel">Loading alerts…</div>}>
+              <AlertManager />
+            </Suspense>
+          </ErrorBoundary>
+        </section>
+      </main>
     </div>
   );
 }

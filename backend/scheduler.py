@@ -94,7 +94,7 @@ def check_price_alerts(price_data):
             PriceAlert.currency,
             PriceAlert.direction,
         ).filter(
-            PriceAlert.is_triggered == False
+            PriceAlert.is_triggered.is_(False)
         ).all()
 
         triggered_count = 0
