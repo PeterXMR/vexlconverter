@@ -1,400 +1,194 @@
-# Vexl Converter MVP v0.0.1
+# Vexl Converter
 
-A simple, real-time Bitcoin price converter with PostgreSQL database backend, Flask API, and React frontend.
-<img width="1190" height="835" alt="image" src="https://github.com/user-attachments/assets/95046b85-b814-4578-aac8-d2a956cfde28" />
+Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live prices, historical charts, and user-configurable alerts.
 
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![React](https://img.shields.io/badge/react-18-61dafb)
+![Postgres](https://img.shields.io/badge/postgres-15-336791)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![CI](https://github.com/PeterXMR/vexlconverter/actions/workflows/docker-image.yml/badge.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 
-## 🎯 Features
+<!-- TODO: add a real screenshot at docs/screenshot.png -->
+![Screenshot](docs/screenshot.png)
 
-- ✅ Real-time BTC prices from CoinGecko API
-- ✅ Automatic price updates every 5 minutes
-- ✅ PostgreSQL database in Docker
-- ✅ Convert BTC to USD and EUR
-- ✅ Clean, responsive React UI
-- ✅ REST API with 3 endpoints
+## Features
 
-## 🚀 Quick Start
+- Multi-crypto conversion (Bitcoin plus additional cryptocurrencies) against multiple fiat currencies
+- Fiat-to-fiat conversion using cross-rates derived from crypto price feeds
+- Universal conversion mode that lets the user pick any supported pair
+- Reverse conversion (fiat amount back to crypto)
+- Price alerts with persistent storage, triggered-alert queue, and acknowledgement flow
+- Historical price charts with 24h / 7d / 30d ranges
+- Live prices sourced from the CoinGecko public API, refreshed on a schedule
+- APScheduler background jobs for price refresh and history backfill
+- Swagger UI for interactive API exploration
+- Dockerised stack (Flask API, React SPA served by Nginx, PostgreSQL 15)
 
-### Prerequisites
+## Architecture
 
-- Docker & Docker Compose
-- (Optional) Python 3.11+ for local backend development
-- (Optional) Node.js 18+ for local frontend development
+```mermaid
+flowchart LR
+  User([Browser]) -->|HTTP| Nginx[Nginx / React SPA]
+  Nginx -->|REST JSON| Flask[Flask API]
+  Flask -->|SQLAlchemy| PG[(PostgreSQL)]
+  Flask -.->|Scheduled fetch| CG[CoinGecko API]
+  APS[APScheduler] -.-> Flask
+```
 
-### Option 1: Full Docker Setup (Recommended)
+## Tech stack
 
-Start all services with Docker (PostgreSQL + Backend + Frontend):
+| Layer     | Tech                                  | Purpose                                              |
+|-----------|---------------------------------------|------------------------------------------------------|
+| Frontend  | React 18, Axios, Chart.js             | SPA UI, API calls, price-history visualisation        |
+| Web tier  | Nginx                                 | Serves the production React bundle                    |
+| Backend   | Python 3.12, Flask 3, SQLAlchemy 2    | REST API and ORM                                      |
+| Jobs      | APScheduler                           | Periodic price refresh and history jobs               |
+| Database  | PostgreSQL 15                         | Price snapshots, alerts, history                      |
+| Data feed | CoinGecko public API                  | Source of live and historical prices                  |
+| Docs      | Swagger UI + `swagger.json`           | Interactive API reference                             |
+| CI        | GitHub Actions                        | Build and smoke-test the Docker images                |
+
+## Quick start
+
+### Docker (recommended)
 
 ```bash
 docker compose up --build
 ```
 
-Or run in background:
-```bash
-docker compose up -d --build
-```
+Then open:
 
-Access the application:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5001
-- **Swagger Docs**: http://localhost:5001/api/docs
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5001
+- Swagger UI: http://localhost:5001/api/docs
 
-Stop all services:
-```bash
-docker compose down
-```
+Stop the stack with `docker compose down`.
 
-### Option 2: Local Development Setup
-
-**1. Start PostgreSQL Database**
+### Local development
 
 ```bash
+# 1. Start Postgres only
 docker compose up -d postgres
-```
 
-Verify it's running:
-```bash
-docker ps | grep btc_postgres
-```
-
-**2. Start Backend (Flask API)**
-
-```bash
+# 2. Backend
 cd backend
 pip install -r requirements.txt
-python app.py
-```
+python app.py          # listens on :5001
 
-The backend will start on http://localhost:5001 and immediately fetch BTC prices.
-
-**3. Start Frontend (React)**
-
-```bash
+# 3. Frontend (new terminal)
 cd frontend
 npm install
-npm start
+npm start              # listens on :3000
 ```
 
-The app will open in your browser at http://localhost:3000
+## API reference
 
-## 📊 Usage
+All endpoints are rooted at `http://localhost:5001`. See Swagger UI (`/api/docs`) or the raw
+schema (`/static/swagger.json`) for request/response payloads.
 
-1. **View Current Rates**: The app displays live BTC/USD and BTC/EUR exchange rates
-2. **Convert BTC**: Enter any BTC amount (e.g., 0.01) in the input field
-3. **See Results**: USD and EUR values automatically calculate and display
-4. **Auto-Refresh**: Prices refresh every 30 seconds on the frontend
+| Method | Path                       | Description                                         |
+|--------|----------------------------|-----------------------------------------------------|
+| GET    | `/api/health`              | Liveness probe                                      |
+| GET    | `/api/cryptos`             | List supported cryptocurrencies                     |
+| GET    | `/api/prices/latest`       | Latest price snapshot (all supported assets)        |
+| GET    | `/api/prices/all`          | Full latest-price table, grouped by asset           |
+| POST   | `/api/convert`             | Convert a crypto amount to fiat                     |
+| POST   | `/api/convert/reverse`     | Convert a fiat amount back to crypto                |
+| POST   | `/api/alerts`              | Create a price alert                                |
+| GET    | `/api/alerts`              | List all configured alerts                          |
+| DELETE | `/api/alerts/<id>`         | Delete an alert by id                               |
+| GET    | `/api/alerts/triggered`    | List alerts that have fired but not been acked      |
+| POST   | `/api/alerts/ack`          | Acknowledge one or more triggered alerts            |
+| GET    | `/api/prices/history`      | Historical prices (24h / 7d / 30d ranges)           |
+| GET    | `/static/swagger.json`     | Raw OpenAPI document                                |
 
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Frontend | React 18+ |
-| Backend | Python 3 + Flask 3.0 |
-| Database | PostgreSQL 15 (Docker) |
-| API Client | Axios |
-| ORM | SQLAlchemy 2.0 |
-| Scheduler | APScheduler 3.10 |
-| External API | CoinGecko (free tier) |
-
-## 📁 Project Structure
+## Project structure
 
 ```
-PythonProject/
-├── backend/
-│   ├── app.py              # Flask REST API
-│   ├── models.py           # SQLAlchemy database models
-│   ├── scheduler.py        # Background price updater
-│   ├── requirements.txt    # Python dependencies
-│   ├── Dockerfile          # Backend container config
-│   ├── entrypoint.sh       # Container startup script
-│   └── .env               # Environment configuration
-├── frontend/
+.
+├── backend/                  # Flask API, models, scheduler, Swagger
+│   ├── app.py
+│   ├── models.py
+│   ├── scheduler.py
+│   ├── swagger.json
+│   ├── requirements.txt
+│   ├── entrypoint.sh
+│   ├── test_setup.py
+│   └── Dockerfile
+├── frontend/                 # React SPA + Nginx image
 │   ├── src/
-│   │   ├── App.js         # Main React app
-│   │   ├── App.css        # Global styles
-│   │   └── components/
-│   │       ├── Converter.js    # Main converter UI
-│   │       └── Converter.css   # Converter styles
-│   ├── package.json       # npm dependencies
-│   └── Dockerfile         # Frontend container config
+│   ├── public/
+│   ├── nginx.conf
+│   ├── package.json
+│   └── Dockerfile
 ├── database/
-│   └── init.sql           # PostgreSQL schema
+│   └── init.sql              # Postgres schema bootstrap
 ├── .github/workflows/
-│   └── docker-image.yml   # CI/CD workflow
-├── docker-compose.yml     # Multi-container orchestration
-├── test-workflow.sh       # Local CI/CD testing script
-└── README.md             # This file
+│   └── docker-image.yml      # CI: build + smoke-test images
+├── docker-compose.yml        # Multi-container orchestration
+├── diagnose.sh               # Environment diagnostic helper
+├── fresh-setup.sh            # Wipe-and-rebuild helper
+├── start-docker.sh           # Convenience launcher (Docker)
+├── start-local.sh            # Convenience launcher (local dev)
+├── test-workflow.sh          # Reproduces the CI steps locally
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── LICENSE
+└── README.md
 ```
 
-## 🔌 API Endpoints
+## Configuration
 
-### GET /api/health
-Health check endpoint
+The backend reads the following environment variables. See `.env.example` (if present) for a
+template; supply them via `docker-compose.yml`, your shell, or a local `.env` file.
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "0.0.1"
-}
-```
+| Variable                 | Default                                                          | Purpose                                   |
+|--------------------------|------------------------------------------------------------------|-------------------------------------------|
+| `DATABASE_URL`           | `postgresql://user:user@localhost:5432/btc_converter`            | SQLAlchemy connection string              |
+| `FLASK_ENV`              | `development`                                                    | Flask environment                         |
+| `FLASK_PORT`             | `5001`                                                           | API listen port                           |
+| `COINGECKO_API_URL`      | `https://api.coingecko.com/api/v3/simple/price`                  | Upstream price feed                       |
+| `PRICE_UPDATE_INTERVAL`  | `300` (seconds)                                                  | APScheduler refresh interval              |
 
-### GET /api/prices/latest
-Get most recent BTC prices
+The frontend reads `REACT_APP_API_URL` at build time (Create React App bakes env vars into the
+bundle, so it must be set before `npm run build` or passed as a Docker build `ARG`).
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "btc_usd": 97345.00,
-    "btc_eur": 91267.00,
-    "timestamp": "2025-12-10T12:34:56"
-  }
-}
-```
-
-### POST /api/convert
-Convert BTC amount to USD and EUR
-
-**Request:**
-```json
-{
-  "btc_amount": 0.01
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "btc_amount": 0.01,
-    "usd_amount": 973.45,
-    "eur_amount": 912.67,
-    "rates": {
-      "btc_usd": 97345.00,
-      "btc_eur": 91267.00
-    },
-    "timestamp": "2025-12-10T12:34:56"
-  }
-}
-```
-
-## 🧪 Testing
-
-### Test Backend
+## Testing
 
 ```bash
-# Health check
-curl http://localhost:5001/api/health
-
-# Get latest prices
-curl http://localhost:5001/api/prices/latest
-
-# Convert BTC
-curl -X POST http://localhost:5001/api/convert \
-  -H "Content-Type: application/json" \
-  -d '{"btc_amount": 0.01}'
-```
-
-### Test Database
-
-```bash
-# Connect to PostgreSQL
-docker exec -it btc_postgres psql -U user -d btc_converter
-
-# View prices table
-\dt
-SELECT * FROM btc_prices ORDER BY timestamp DESC LIMIT 5;
-\q
-```
-
-## 🚢 CI/CD - GitHub Actions
-
-### Automated Testing Workflow
-
-The project includes a GitHub Actions workflow (`.github/workflows/docker-image.yml`) that automatically:
-- ✅ Builds Docker images on every push/PR
-- ✅ Starts all services (backend + PostgreSQL)
-- ✅ Runs health checks
-- ✅ Validates the application works end-to-end
-
-### Test Workflow Locally
-
-Before pushing to GitHub, test the workflow locally:
-
-```bash
-./test-workflow.sh
-```
-
-**What it does:**
-1. Detects docker-compose (V1) or docker compose (V2)
-2. Builds Docker images
-3. Starts services
-4. Waits 15 seconds for initialization
-5. Checks backend health endpoint
-6. Shows logs if anything fails
-7. Cleans up containers
-
-**Expected output:**
-```
-🧪 Testing Docker Image CI workflow locally
-==============================================
-
-Using: docker-compose
-✓ Step 1: Checkout (using current directory)
-📦 Step 2: Build Docker images with docker compose
-✅ Build successful
-🚀 Step 3: Start services
-✅ Services started
-⏳ Step 4: Wait for services to be ready (15 seconds)
-🏥 Step 5: Check backend health
-{"status":"healthy","version":"0.0.1"}
-✅ Backend is healthy
-🛑 Step 7: Stop services
-
-==============================================
-✅ Workflow test PASSED
-Your workflow will work on GitHub Actions!
-```
-
-### Workflow Configuration
-
-The workflow (`.github/workflows/docker-image.yml`) runs on:
-- Every push to `main` or `master` branch
-- Every pull request to `main` or `master` branch
-
-**Workflow steps:**
-```yaml
-- Checkout code
-- Build Docker images (docker compose build)
-- Start services (docker compose up -d)
-- Wait 15 seconds
-- Health check (curl http://localhost:5001/api/health)
-- Show logs on failure
-- Clean up (docker compose down)
-```
-
-### View CI/CD Results
-
-1. Push code to GitHub: `git push origin main`
-2. Go to your repository on GitHub
-3. Click the **"Actions"** tab
-4. See the workflow run in real-time
-5. ✅ Green checkmark = all tests passed
-6. ❌ Red X = tests failed (check logs)
-
-### Docker Compose V2 Compatibility
-
-The workflow uses **Docker Compose V2** (`docker compose` without hyphen) which is the standard on GitHub Actions runners. The test script automatically detects which version you have locally.
-
-**Check your version:**
-```bash
-# V1 (old)
-docker-compose --version
-
-# V2 (new - used by GitHub Actions)
-docker compose version
-```
-
-### CI/CD Best Practices
-
-✅ **Always test locally first**: Run `./test-workflow.sh` before pushing
-✅ **Check logs on failure**: Script shows container logs if health check fails
-✅ **Commit permissions**: entrypoint.sh has execute permissions in git
-✅ **Line endings**: .gitattributes ensures proper Unix line endings
-
-## 🔧 Configuration
-
-### Backend Environment (.env)
-
-```env
-DATABASE_URL=postgresql://user:user@localhost:5432/btc_converter
-FLASK_ENV=development
-FLASK_PORT=5001
-COINGECKO_API_URL=https://api.coingecko.com/api/v3/simple/price
-PRICE_UPDATE_INTERVAL=300
-```
-
-### Database Credentials
-
-- **Database**: btc_converter
-- **User**: user
-- **Password**: user
-- **Port**: 5432 (exposed via Docker)
-
-## 🐛 Troubleshooting
-
-### Backend won't start
-```bash
-# Check if dependencies are installed
-pip list | grep Flask
-
-# Reinstall dependencies
+# Backend
 cd backend
-pip install -r requirements.txt
+pytest
+
+# Frontend
+cd frontend
+npm test
 ```
 
-### Database connection error
-```bash
-# Check if PostgreSQL container is running
-docker ps | grep btc_postgres
+`test-workflow.sh` at the repo root reproduces the CI pipeline locally: it builds the images,
+boots the stack, and hits `/api/health`.
 
-# Restart container
-docker-compose restart postgres
+## Deployment
 
-# View logs
-docker-compose logs postgres
-```
+The project ships as three containers orchestrated by `docker-compose.yml` and will run on any
+host with Docker Engine. For managed platforms:
 
-### Frontend can't connect to backend
-- Verify backend is running on http://localhost:5001
-- Check browser console for CORS errors
-- Ensure flask-cors is installed in backend
+- **Fly.io** — `fly launch` from the repo root; create a Postgres attachment and set
+  `DATABASE_URL` as a secret.
+- **Render** — one web service per Dockerfile plus a managed Postgres instance.
+- **Any VPS** — clone, set env vars, `docker compose up -d`, put a reverse proxy (Caddy / Traefik)
+  in front for TLS.
 
-### Prices not updating
-- Check backend terminal for scheduler logs
-- Verify CoinGecko API is accessible:
-  ```bash
-  curl "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur"
-  ```
+## Contributing
 
-## 📈 Future Enhancements (v0.0.2+)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, branch naming, and commit conventions.
 
-- [ ] Reverse conversion (USD/EUR → BTC)
-- [ ] Price history charts
-- [ ] More cryptocurrencies (ETH, LTC, etc.)
-- [ ] User accounts and conversion history
-- [ ] Price alerts
-- [ ] WebSocket for real-time updates
-- [ ] Mobile app (React Native)
-- [ ] API authentication
+## Security
 
-## 🛑 Stopping the Application
+Security policy and vulnerability disclosure instructions are in [SECURITY.md](SECURITY.md).
 
-```bash
-# Stop backend (Ctrl+C in terminal)
+## License
 
-# Stop frontend (Ctrl+C in terminal)
-
-# Stop database
-docker-compose down
-```
-
-## 📚 Documentation
-
-- **TODO.txt**: Step-by-step implementation guide
-- **This README**: Quick start and usage
-
-## 📄 License
-
-MIT License - Educational/Personal use
-
----
-
-**Version**: 0.0.1  
-**Status**: ✅ MVP Complete  
-**Last Updated**: December 10, 2025
-
+MIT — see [LICENSE](LICENSE).

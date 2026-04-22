@@ -9,7 +9,7 @@ services:
       # Provide POSTGRES_PASSWORD in .env or through the environment (e.g. CI secrets).
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -18,6 +18,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build: ./backend
@@ -28,6 +34,7 @@ services:
       FLASK_PORT: 5001
       COINGECKO_API_URL: https://api.coingecko.com/api/v3/simple/price
       PRICE_UPDATE_INTERVAL: 300
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "5001:5001"
     depends_on:
@@ -36,17 +43,39 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5001/api}
     container_name: btc_frontend
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - backend
     restart: unless-stopped
-    environment:
-      - REACT_APP_API_URL=http://localhost:5001
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

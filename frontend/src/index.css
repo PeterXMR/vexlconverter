@@ -1,3 +1,48 @@
+/* ─── Design tokens ────────────────────────────────
+ * Single source of truth for spacing / radii / colour / type.
+ * Components should reference these; avoid magic numbers in CSS files. */
+:root {
+  /* Spacing scale (4/8/12/16/24/32) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* Colours — near-black surfaces, pink accent. Brand preserved. */
+  --bg-0: #000;
+  --bg-1: #0d0d0d;
+  --bg-2: #151515;
+  --bg-3: #1f1f1f;
+  --border: rgba(252, 3, 119, 0.25);
+  --border-dim: rgba(255, 255, 255, 0.08);
+  --accent: #fc0377;
+  --accent-2: #9400ff;
+  --accent-soft: rgba(252, 3, 119, 0.15);
+  --text: #fff;
+  --text-dim: #888;
+  --text-mute: #555;
+  --success: #26a69a;
+  --danger: #ef5350;
+
+  /* Type scale */
+  --t-xs: 10px;
+  --t-sm: 11px;
+  --t-md: 13px;
+  --t-lg: 16px;
+  --t-xl: 20px;
+
+  /* Fonts */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,15 +51,40 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-ui);
+  background: var(--bg-0);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: var(--t-md);
+  line-height: 1.4;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: var(--font-mono);
 }
 
+/* Shared panel (replaces .converter-box / .alert-manager-box / .price-chart-container) */
+.panel {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s-4);
+}
+
+/* Section label — small, uppercase, tracked, muted. Replaces large h2s. */
+.section-label {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 0 0 var(--s-3) 0;
+}
+
+/* Monospace numeric display — used on any numeric output. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}

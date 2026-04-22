@@ -1,11 +1,14 @@
 from sqlalchemy import create_engine, Column, Integer, Numeric, DateTime, String, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from sqlalchemy.orm import declarative_base, sessionmaker
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import logging
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -18,7 +21,7 @@ SUPPORTED_CRYPTOS = {
     'dogecoin':      {'symbol': 'DOGE',  'name': 'Dogecoin'},
     'cardano':       {'symbol': 'ADA',   'name': 'Cardano'},
     'polkadot':      {'symbol': 'DOT',   'name': 'Polkadot'},
-    'matic-network': {'symbol': 'MATIC', 'name': 'Polygon'},
+    'polygon-ecosystem-token': {'symbol': 'POL', 'name': 'Polygon'},
     'chainlink':     {'symbol': 'LINK',  'name': 'Chainlink'},
     'avalanche-2':   {'symbol': 'AVAX',  'name': 'Avalanche'},
 }
@@ -31,8 +34,8 @@ class BTCPrice(Base):
     id = Column(Integer, primary_key=True)
     btc_usd = Column(Numeric(12, 2), nullable=False)
     btc_eur = Column(Numeric(12, 2), nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {
@@ -51,8 +54,8 @@ class CryptoPrice(Base):
     crypto_id = Column(String(32), nullable=False)
     price_usd = Column(Numeric(18, 8), nullable=False)
     price_eur = Column(Numeric(18, 8), nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         info = SUPPORTED_CRYPTOS.get(self.crypto_id, {})
@@ -77,7 +80,7 @@ class PriceAlert(Base):
     direction = Column(String(10), nullable=False, default='above')
     is_triggered = Column(Boolean, nullable=False, default=False)
     seen_by_client = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     triggered_at = Column(DateTime, nullable=True)
 
     def to_dict(self):
@@ -95,15 +98,35 @@ class PriceAlert(Base):
 
 
 # Database connection
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:user@localhost:5432/btc_converter')
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    logger.warning(
+        "DATABASE_URL not set; falling back to dev default "
+        "postgresql://user:user@localhost:5432/btc_converter"
+    )
+    DATABASE_URL = 'postgresql://user:user@localhost:5432/btc_converter'
 if DATABASE_URL.startswith('postgresql://'):
     DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://', 1)
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
+
+@contextmanager
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+__all__ = [
+    'Base',
+    'BTCPrice',
+    'CryptoPrice',
+    'PriceAlert',
+    'SUPPORTED_CRYPTOS',
+    'SessionLocal',
+    'engine',
+    'get_db',
+]

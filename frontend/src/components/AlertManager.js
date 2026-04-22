@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './AlertManager.css';
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 function AlertManager() {
   const [alerts, setAlerts] = useState([]);
@@ -12,7 +12,20 @@ function AlertManager() {
   const [direction, setDirection] = useState('above');
   const [crypto, setCrypto] = useState('bitcoin');
   const [notifications, setNotifications] = useState([]);
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  );
   const seenTriggeredIds = useRef(new Set());
+
+  const handleEnableNotifications = async () => {
+    if (!('Notification' in window)) return;
+    try {
+      const result = await Notification.requestPermission();
+      setNotificationPermission(result);
+    } catch (err) {
+      console.error('Failed to request notification permission:', err);
+    }
+  };
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -72,10 +85,6 @@ function AlertManager() {
   }, [fetchAlerts]);
 
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
     // Fetch supported cryptos for the selector
     axios.get(`${API_URL}/cryptos`).then(res => {
       if (res.data.success) setCryptos(res.data.data);
@@ -177,6 +186,16 @@ function AlertManager() {
 
       <div className="alert-manager-box">
         <h2>Price Alerts</h2>
+
+        {notificationPermission === 'default' && (
+          <button
+            type="button"
+            className="alert-enable-notifications-btn"
+            onClick={handleEnableNotifications}
+          >
+            Enable notifications
+          </button>
+        )}
 
         <form className="alert-form" onSubmit={handleSubmit}>
           <div className="alert-form-group">

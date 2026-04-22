@@ -2,9 +2,30 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import './Converter.css';
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 const SATS_PER_BTC = 100000000;
+
+// open.er-api.com returns USD-base rates for ~160 fiat currencies and requires
+// no API key. Cached for 10 min so switching modes doesn't refetch.
+const FIAT_RATES_URL = 'https://open.er-api.com/v6/latest/USD';
+const FIAT_RATES_TTL_MS = 10 * 60 * 1000;
+let _fiatRatesCache = null;
+let _fiatRatesFetchedAt = 0;
+
+async function getUsdToFiatRates() {
+  const now = Date.now();
+  if (_fiatRatesCache && (now - _fiatRatesFetchedAt) < FIAT_RATES_TTL_MS) {
+    return _fiatRatesCache;
+  }
+  const response = await axios.get(FIAT_RATES_URL);
+  if (response?.data?.result === 'success' && response.data.rates) {
+    _fiatRatesCache = response.data.rates;
+    _fiatRatesFetchedAt = now;
+    return _fiatRatesCache;
+  }
+  throw new Error('Fiat rates provider returned an unexpected payload');
+}
 
 const FIAT_CURRENCIES = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -33,6 +54,11 @@ const FIAT_CURRENCIES = [
   { code: 'ARS', symbol: '$', name: 'Argentine Peso' },
   { code: 'PYG', symbol: '₲', name: 'Paraguayan Guarani' },
   { code: 'RUB', symbol: '₽', name: 'Russian Ruble' },
+  { code: 'HUF', symbol: 'Ft', name: 'Hungarian Forint' },
+  { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
+  { code: 'ILS', symbol: '₪', name: 'Israeli Shekel' },
+  { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' },
+  { code: 'UAH', symbol: '₴', name: 'Ukrainian Hryvnia' },
 ];
 
 function Converter({ mode }) {
@@ -72,7 +98,6 @@ function Converter({ mode }) {
   const [universalTargetAmount, setUniversalTargetAmount] = useState('');
 
   const debounceTimer = useRef(null);
-  const inputRef = useRef(null);
 
   // ─── Fetch cryptos and prices ──────────────
   useEffect(() => {
@@ -138,34 +163,46 @@ function Converter({ mode }) {
         setUsdAmount(response.data.data.usd_amount.toFixed(2));
         setEurAmount(response.data.data.eur_amount.toFixed(2));
         if (additionalCurrencies.length > 0) {
-          await fetchAdditionalRates(btcValue);
+          const btcUsdRate = response.data.data.usd_amount / btcValue;
+          await fetchAdditionalRates(btcValue, btcUsdRate);
         }
         setError(null);
       }
     } catch (err) {
-      setError('Conversion failed');
+      console.error('BTC conversion failed:', err);
+      setError('Conversion failed, please try again.');
     } finally {
       setLoading(false);
     }
+    // fetchAdditionalRates is defined below in the same component body and
+    // captures additionalCurrencies.length via this callback's closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [additionalCurrencies.length]);
 
-  const fetchAdditionalRates = async (btcValue) => {
+  // Use open.er-api.com (ExchangeRate-API free tier, no key, 166 fiat currencies).
+  // Rationale: CoinGecko's /simple/price vs_currencies list is curated to ~30 fiats
+  // and excludes some that our UI offers (e.g. PYG Paraguayan Guarani). Computing
+  // BTC → USD → target_fiat via a dedicated fiat-rates provider gives full coverage
+  // and consistent cross-rates.
+  const fetchAdditionalRates = async (btcValue, btcUsdRate) => {
     try {
-      const codes = additionalCurrencies.map(c => c.code.toLowerCase()).join(',');
-      const response = await axios.get(
-        `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${codes}`
-      );
-      if (response.data && response.data.bitcoin) {
-        setAdditionalCurrencies(prev =>
-          prev.map(curr => ({
+      const usdToFiat = await getUsdToFiatRates();
+      setAdditionalCurrencies(prev =>
+        prev.map(curr => {
+          const usdRate = usdToFiat[curr.code];
+          if (typeof usdRate !== 'number' || usdRate <= 0) {
+            return { ...curr, rate: null, amount: null };
+          }
+          const btcToFiat = btcUsdRate * usdRate;
+          return {
             ...curr,
-            rate: response.data.bitcoin[curr.code.toLowerCase()] || 0,
-            amount: ((response.data.bitcoin[curr.code.toLowerCase()] || 0) * btcValue).toFixed(2)
-          }))
-        );
-      }
+            rate: btcToFiat,
+            amount: (btcToFiat * btcValue).toFixed(2),
+          };
+        })
+      );
     } catch (err) {
-      console.error('Failed to fetch additional rates:', err);
+      console.error('Failed to fetch fiat rates:', err);
     }
   };
 
@@ -209,15 +246,22 @@ function Converter({ mode }) {
   };
 
   const addCurrency = (currency) => {
-    if (!additionalCurrencies.find(c => c.code === currency.code)) {
-      setAdditionalCurrencies(prev => [...prev, { ...currency, rate: 0, amount: '' }]);
-      setShowCurrencyPicker(false);
-      if (btcAmount && !isNaN(btcAmount) && parseFloat(btcAmount) > 0) {
-        const btcValue = unit === 'SATS'
-          ? parseFloat(btcAmount) / SATS_PER_BTC
-          : parseFloat(btcAmount);
-        performBtcConversion(btcValue);
-      }
+    if (additionalCurrencies.find(c => c.code === currency.code)) return;
+    setAdditionalCurrencies(prev => [...prev, { ...currency, rate: 0, amount: '' }]);
+    setShowCurrencyPicker(false);
+
+    // Populate the newly added currency's rate immediately using the already
+    // computed USD amount. Going back through performBtcConversion would
+    // capture stale additionalCurrencies state in its useCallback closure.
+    const parsedBtc = parseFloat(btcAmount);
+    const parsedUsd = parseFloat(usdAmount);
+    if (
+      !isNaN(parsedBtc) && parsedBtc > 0 &&
+      !isNaN(parsedUsd) && parsedUsd > 0
+    ) {
+      const btcValue = unit === 'SATS' ? parsedBtc / SATS_PER_BTC : parsedBtc;
+      const btcUsdRate = parsedUsd / btcValue;
+      fetchAdditionalRates(btcValue, btcUsdRate);
     }
   };
 
@@ -233,11 +277,19 @@ function Converter({ mode }) {
       setCryptoTargetAmount('');
       return;
     }
-    const sourcePrice = allPrices[sourceCrypto]?.price_usd;
-    const targetPrice = allPrices[targetCrypto]?.price_usd;
-    if (sourcePrice && targetPrice && targetPrice > 0) {
-      const result = (parseFloat(value) * sourcePrice) / targetPrice;
-      setCryptoTargetAmount(result.toFixed(8).replace(/\.?0+$/, ''));
+    try {
+      const sourcePrice = allPrices[sourceCrypto]?.price_usd;
+      const targetPrice = allPrices[targetCrypto]?.price_usd;
+      if (sourcePrice && targetPrice && targetPrice > 0) {
+        const result = (parseFloat(value) * sourcePrice) / targetPrice;
+        setCryptoTargetAmount(result.toFixed(8).replace(/\.?0+$/, ''));
+        setError(null);
+      } else {
+        setError('Conversion failed, please try again.');
+      }
+    } catch (err) {
+      console.error('Crypto conversion failed:', err);
+      setError('Conversion failed, please try again.');
     }
   };
 
@@ -249,28 +301,25 @@ function Converter({ mode }) {
       setFiatTargetAmount('');
       return;
     }
-    // Derive fiat-to-fiat rate via BTC prices from CoinGecko
-    // We use allPrices['bitcoin'] which has price_usd and price_eur
-    // For currencies beyond USD/EUR, we need to fetch from CoinGecko
+    // ER-API gives USD-base rates for every fiat we support, so a fiat↔fiat
+    // cross-rate is just (usdToTgt / usdToSrc). This handles currencies
+    // CoinGecko's vs_currencies list doesn't (e.g. PYG).
     debounce(async () => {
       try {
-        const src = sourceFiat.toLowerCase();
-        const tgt = targetFiat.toLowerCase();
-        const response = await axios.get(
-          `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${src},${tgt}`
-        );
-        if (response.data?.bitcoin) {
-          const srcRate = response.data.bitcoin[src];
-          const tgtRate = response.data.bitcoin[tgt];
-          if (srcRate && tgtRate) {
-            // 1 BTC = srcRate source fiat = tgtRate target fiat
-            // So 1 source fiat = tgtRate/srcRate target fiat
-            const result = (parseFloat(value) * tgtRate) / srcRate;
-            setFiatTargetAmount(result.toFixed(2));
-          }
+        const usdToFiat = await getUsdToFiatRates();
+        const srcRate = usdToFiat[sourceFiat];
+        const tgtRate = usdToFiat[targetFiat];
+        if (srcRate && tgtRate && srcRate > 0) {
+          const result = (parseFloat(value) * tgtRate) / srcRate;
+          setFiatTargetAmount(result.toFixed(2));
+          setError(null);
+        } else {
+          setError(`No rate available for ${sourceFiat} or ${targetFiat}.`);
+          setFiatTargetAmount('');
         }
       } catch (err) {
         console.error('Fiat conversion failed:', err);
+        setError('Conversion failed, please try again.');
       }
     }, value);
   };
@@ -284,74 +333,88 @@ function Converter({ mode }) {
       return;
     }
     debounce(async () => {
-      try {
-        const amount = parseFloat(value);
+      const amount = parseFloat(value);
+      // Collect a resolved value OR an error message from whichever branch
+      // runs, then apply both to state exactly once at the end. Avoids the
+      // "unconditional setError(null) wipes just-set errors" class of bug.
+      let resolved = null;
+      let errMsg = null;
 
+      try {
         if (universalSourceType === 'crypto' && universalTargetType === 'crypto') {
-          // Crypto to crypto
           const srcPrice = allPrices[universalSource]?.price_usd;
           const tgtPrice = allPrices[universalTarget]?.price_usd;
           if (srcPrice && tgtPrice && tgtPrice > 0) {
-            setUniversalTargetAmount(
-              ((amount * srcPrice) / tgtPrice).toFixed(8).replace(/\.?0+$/, '')
-            );
+            resolved = ((amount * srcPrice) / tgtPrice).toFixed(8).replace(/\.?0+$/, '');
+          } else {
+            errMsg = `No price available for ${universalSource} or ${universalTarget}.`;
           }
         } else if (universalSourceType === 'crypto' && universalTargetType === 'fiat') {
-          // Crypto to fiat
+          // Crypto → fiat: get USD price from backend, cross-rate via ER-API.
           const response = await axios.post(`${API_URL}/convert`, {
             crypto: universalSource,
-            amount: amount
+            amount,
           });
-          if (response.data.success) {
-            const tgt = universalTarget.toLowerCase();
-            if (tgt === 'usd') {
-              setUniversalTargetAmount(response.data.data.usd_amount.toFixed(2));
-            } else if (tgt === 'eur') {
-              setUniversalTargetAmount(response.data.data.eur_amount.toFixed(2));
+          if (!response.data?.success) {
+            errMsg = 'Conversion failed, please try again.';
+          } else {
+            const usdAmt = response.data.data.usd_amount;
+            if (universalTarget === 'USD') {
+              resolved = usdAmt.toFixed(2);
             } else {
-              // For other fiats, use CoinGecko
-              const cg = await axios.get(
-                `https://api.coingecko.com/api/v3/simple/price?ids=${universalSource}&vs_currencies=${tgt}`
-              );
-              if (cg.data?.[universalSource]?.[tgt]) {
-                setUniversalTargetAmount(
-                  (amount * cg.data[universalSource][tgt]).toFixed(2)
-                );
+              const usdToFiat = await getUsdToFiatRates();
+              const rate = usdToFiat[universalTarget];
+              if (rate && rate > 0) {
+                resolved = (usdAmt * rate).toFixed(2);
+              } else {
+                errMsg = `No rate available for ${universalTarget}.`;
               }
             }
           }
         } else if (universalSourceType === 'fiat' && universalTargetType === 'crypto') {
-          // Fiat to crypto
-          const response = await axios.post(`${API_URL}/convert/reverse`, {
-            fiat_amount: amount,
-            fiat_currency: universalSource.toLowerCase() === 'eur' ? 'eur' : 'usd',
-            crypto: universalTarget
-          });
-          if (response.data.success) {
-            setUniversalTargetAmount(
-              response.data.data.crypto_amount.toFixed(8).replace(/\.?0+$/, '')
-            );
+          // Fiat → crypto: convert source fiat to USD first, then hit backend.
+          // Previously this silently sent USD for any non-EUR source, quietly
+          // returning wrong crypto amounts.
+          let usdInput = amount;
+          if (universalSource !== 'USD') {
+            const usdToFiat = await getUsdToFiatRates();
+            const rate = usdToFiat[universalSource];
+            if (!rate || rate <= 0) {
+              errMsg = `No rate available for ${universalSource}.`;
+            } else {
+              usdInput = amount / rate;
+            }
+          }
+          if (!errMsg) {
+            const response = await axios.post(`${API_URL}/convert/reverse`, {
+              fiat_amount: usdInput,
+              fiat_currency: 'usd',
+              crypto: universalTarget,
+            });
+            if (response.data?.success) {
+              resolved = response.data.data.crypto_amount.toFixed(8).replace(/\.?0+$/, '');
+            } else {
+              errMsg = 'Conversion failed, please try again.';
+            }
           }
         } else {
-          // Fiat to fiat
-          const src = universalSource.toLowerCase();
-          const tgt = universalTarget.toLowerCase();
-          const cg = await axios.get(
-            `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${src},${tgt}`
-          );
-          if (cg.data?.bitcoin) {
-            const srcRate = cg.data.bitcoin[src];
-            const tgtRate = cg.data.bitcoin[tgt];
-            if (srcRate && tgtRate) {
-              setUniversalTargetAmount(
-                ((amount * tgtRate) / srcRate).toFixed(2)
-              );
-            }
+          // Fiat → fiat via ER-API (cross-rate = usdToTgt / usdToSrc).
+          const usdToFiat = await getUsdToFiatRates();
+          const srcRate = usdToFiat[universalSource];
+          const tgtRate = usdToFiat[universalTarget];
+          if (srcRate && tgtRate && srcRate > 0) {
+            resolved = ((amount * tgtRate) / srcRate).toFixed(2);
+          } else {
+            errMsg = `No rate available for ${universalSource} or ${universalTarget}.`;
           }
         }
       } catch (err) {
         console.error('Universal conversion failed:', err);
+        errMsg = 'Conversion failed, please try again.';
       }
+
+      setUniversalTargetAmount(resolved ?? '');
+      setError(errMsg);
     }, value);
   };
 
@@ -400,7 +463,6 @@ function Converter({ mode }) {
           </button>
         </div>
         <input
-          ref={inputRef}
           id="btc-input"
           type="text"
           inputMode="decimal"
@@ -434,21 +496,37 @@ function Converter({ mode }) {
         </div>
       </div>
 
-      {additionalCurrencies.map((currency) => (
-        <div key={currency.code} className="output-section additional-currency">
-          <div className="output-field output-field-additional">
-            <label>
-              <span className="icon">{currency.symbol}</span>
-              {currency.name} ({currency.code})
-              <button className="remove-currency-btn" onClick={() => removeCurrency(currency.code)} type="button" title="Remove">✕</button>
-            </label>
-            <input type="text" className="output-input" value={currency.amount || '\u00A0'} readOnly placeholder="0.00" />
-            <div className="btc-rate">
-              {currency.rate > 0 ? `1 BTC = ${currency.symbol}${formatNumber(currency.rate)}` : '\u00A0'}
+      {additionalCurrencies.length > 0 && (
+        <div className="additional-currencies-grid">
+          {additionalCurrencies.map((currency) => (
+            <div key={currency.code} className="additional-currency">
+              <div className="output-field output-field-additional">
+                <label>
+                  <span className="currency-label">
+                    <span className="icon">{currency.symbol}</span>
+                    {currency.code}
+                  </span>
+                  <button className="remove-currency-btn" onClick={() => removeCurrency(currency.code)} type="button" title="Remove">✕</button>
+                </label>
+                <input
+                  type="text"
+                  className="output-input"
+                  value={currency.amount ?? (currency.rate === null ? 'Rate unavailable' : '\u00A0')}
+                  readOnly
+                  placeholder="0.00"
+                />
+                <div className="btc-rate">
+                  {currency.rate > 0
+                    ? `1 BTC = ${currency.symbol}${formatNumber(currency.rate)}`
+                    : currency.rate === null
+                      ? 'No rate available'
+                      : '\u00A0'}
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
-      ))}
+      )}
 
       <div className="add-currency-section">
         <button className="add-currency-btn" onClick={() => setShowCurrencyPicker(!showCurrencyPicker)} type="button">
@@ -482,87 +560,93 @@ function Converter({ mode }) {
     <div className="converter-box">
       <h2>Crypto to Crypto</h2>
 
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">⟠</span>
-            From
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={sourceCrypto}
+      <div className="convert-row">
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">⟠</span>
+              From
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={sourceCrypto}
+              onChange={(e) => {
+                setSourceCrypto(e.target.value);
+                setCryptoSourceAmount('');
+                setCryptoTargetAmount('');
+              }}
+            >
+              {cryptos.map(c => (
+                <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            inputMode="decimal"
+            className="converter-input"
+            value={cryptoSourceAmount}
             onChange={(e) => {
-              setSourceCrypto(e.target.value);
-              setCryptoSourceAmount('');
-              setCryptoTargetAmount('');
+              if (e.target.value === '' || /^\d*\.?\d{0,8}$/.test(e.target.value)) {
+                handleCryptoConvert(e.target.value);
+              }
             }}
-          >
-            {cryptos.map(c => (
-              <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
-            ))}
-          </select>
+            placeholder="0.00"
+            autoComplete="off"
+            autoFocus
+          />
+          {allPrices[sourceCrypto] && (
+            <div className="info-text">
+              1 {getCryptoSymbol(sourceCrypto)} = ${formatNumber(allPrices[sourceCrypto].price_usd)}
+            </div>
+          )}
         </div>
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="decimal"
-          className="converter-input"
-          value={cryptoSourceAmount}
-          onChange={(e) => {
-            if (e.target.value === '' || /^\d*\.?\d{0,8}$/.test(e.target.value)) {
-              handleCryptoConvert(e.target.value);
-            }
+
+        <button
+          type="button"
+          className="arrow swap-arrow"
+          onClick={() => {
+            const tmp = sourceCrypto;
+            setSourceCrypto(targetCrypto);
+            setTargetCrypto(tmp);
+            setCryptoSourceAmount('');
+            setCryptoTargetAmount('');
           }}
-          placeholder="0.00"
-          autoComplete="off"
-          autoFocus
-        />
-        {allPrices[sourceCrypto] && (
-          <div className="info-text">
-            1 {getCryptoSymbol(sourceCrypto)} = ${formatNumber(allPrices[sourceCrypto].price_usd)}
+          aria-label="Swap currencies"
+        >⇅</button>
+
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">⟠</span>
+              To
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={targetCrypto}
+              onChange={(e) => {
+                setTargetCrypto(e.target.value);
+                if (cryptoSourceAmount) handleCryptoConvert(cryptoSourceAmount);
+              }}
+            >
+              {cryptos.map(c => (
+                <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
+              ))}
+            </select>
           </div>
-        )}
-      </div>
-
-      <div className="arrow swap-arrow" onClick={() => {
-        const tmp = sourceCrypto;
-        setSourceCrypto(targetCrypto);
-        setTargetCrypto(tmp);
-        setCryptoSourceAmount('');
-        setCryptoTargetAmount('');
-      }}>⇅</div>
-
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">⟠</span>
-            To
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={targetCrypto}
-            onChange={(e) => {
-              setTargetCrypto(e.target.value);
-              if (cryptoSourceAmount) handleCryptoConvert(cryptoSourceAmount);
-            }}
-          >
-            {cryptos.map(c => (
-              <option key={c.id} value={c.id}>{c.symbol} - {c.name}</option>
-            ))}
-          </select>
+          <input
+            type="text"
+            className="output-input"
+            value={cryptoTargetAmount || '\u00A0'}
+            readOnly
+            placeholder="0.00"
+          />
+          {allPrices[sourceCrypto] && allPrices[targetCrypto] && (
+            <div className="btc-rate">
+              1 {getCryptoSymbol(sourceCrypto)} = {(allPrices[sourceCrypto].price_usd / allPrices[targetCrypto].price_usd).toFixed(6).replace(/\.?0+$/, '')} {getCryptoSymbol(targetCrypto)}
+            </div>
+          )}
         </div>
-        <input
-          type="text"
-          className="output-input"
-          value={cryptoTargetAmount || '\u00A0'}
-          readOnly
-          placeholder="0.00"
-        />
-        {allPrices[sourceCrypto] && allPrices[targetCrypto] && (
-          <div className="btc-rate">
-            1 {getCryptoSymbol(sourceCrypto)} = {(allPrices[sourceCrypto].price_usd / allPrices[targetCrypto].price_usd).toFixed(6).replace(/\.?0+$/, '')} {getCryptoSymbol(targetCrypto)}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -571,77 +655,83 @@ function Converter({ mode }) {
     <div className="converter-box">
       <h2>Fiat to Fiat</h2>
 
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">{getFiatSymbol(sourceFiat)}</span>
-            From
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={sourceFiat}
+      <div className="convert-row">
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">{getFiatSymbol(sourceFiat)}</span>
+              From
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={sourceFiat}
+              onChange={(e) => {
+                setSourceFiat(e.target.value);
+                setFiatSourceAmount('');
+                setFiatTargetAmount('');
+              }}
+            >
+              {FIAT_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            inputMode="decimal"
+            className="converter-input"
+            value={fiatSourceAmount}
             onChange={(e) => {
-              setSourceFiat(e.target.value);
-              setFiatSourceAmount('');
-              setFiatTargetAmount('');
+              if (e.target.value === '' || /^\d*\.?\d{0,2}$/.test(e.target.value)) {
+                handleFiatConvert(e.target.value);
+              }
             }}
-          >
-            {FIAT_CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-            ))}
-          </select>
+            placeholder="0.00"
+            autoComplete="off"
+            autoFocus
+          />
         </div>
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="decimal"
-          className="converter-input"
-          value={fiatSourceAmount}
-          onChange={(e) => {
-            if (e.target.value === '' || /^\d*\.?\d{0,2}$/.test(e.target.value)) {
-              handleFiatConvert(e.target.value);
-            }
+
+        <button
+          type="button"
+          className="arrow swap-arrow"
+          onClick={() => {
+            const tmp = sourceFiat;
+            setSourceFiat(targetFiat);
+            setTargetFiat(tmp);
+            setFiatSourceAmount('');
+            setFiatTargetAmount('');
           }}
-          placeholder="0.00"
-          autoComplete="off"
-          autoFocus
-        />
-      </div>
+          aria-label="Swap currencies"
+        >⇅</button>
 
-      <div className="arrow swap-arrow" onClick={() => {
-        const tmp = sourceFiat;
-        setSourceFiat(targetFiat);
-        setTargetFiat(tmp);
-        setFiatSourceAmount('');
-        setFiatTargetAmount('');
-      }}>⇅</div>
-
-      <div className="input-section">
-        <div className="input-header">
-          <label>
-            <span className="icon">{getFiatSymbol(targetFiat)}</span>
-            To
-          </label>
-          <select
-            className="crypto-dropdown"
-            value={targetFiat}
-            onChange={(e) => {
-              setTargetFiat(e.target.value);
-              if (fiatSourceAmount) handleFiatConvert(fiatSourceAmount);
-            }}
-          >
-            {FIAT_CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-            ))}
-          </select>
+        <div className="input-section">
+          <div className="input-header">
+            <label>
+              <span className="icon">{getFiatSymbol(targetFiat)}</span>
+              To
+            </label>
+            <select
+              className="crypto-dropdown"
+              value={targetFiat}
+              onChange={(e) => {
+                setTargetFiat(e.target.value);
+                if (fiatSourceAmount) handleFiatConvert(fiatSourceAmount);
+              }}
+            >
+              {FIAT_CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="text"
+            className="output-input"
+            value={fiatTargetAmount || '\u00A0'}
+            readOnly
+            placeholder="0.00"
+          />
         </div>
-        <input
-          type="text"
-          className="output-input"
-          value={fiatTargetAmount || '\u00A0'}
-          readOnly
-          placeholder="0.00"
-        />
       </div>
     </div>
   );
@@ -659,6 +749,7 @@ function Converter({ mode }) {
       <div className="converter-box">
         <h2>Universal Converter</h2>
 
+        <div className="convert-row">
         <div className="input-section">
           <div className="input-header">
             <label>
@@ -695,7 +786,6 @@ function Converter({ mode }) {
             </div>
           </div>
           <input
-            ref={inputRef}
             type="text"
             inputMode="decimal"
             className="converter-input"
@@ -713,7 +803,12 @@ function Converter({ mode }) {
           />
         </div>
 
-        <div className="arrow swap-arrow" onClick={swapUniversal}>⇅</div>
+        <button
+          type="button"
+          className="arrow swap-arrow"
+          onClick={swapUniversal}
+          aria-label="Swap currencies"
+        >⇅</button>
 
         <div className="input-section">
           <div className="input-header">
@@ -756,6 +851,7 @@ function Converter({ mode }) {
             readOnly
             placeholder="0.00"
           />
+        </div>
         </div>
       </div>
     );

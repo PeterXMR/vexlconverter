@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Vexl Converter - Local Backend Setup
+
+# Run from the repo root regardless of where the script is invoked from
+cd "$(dirname "$0")/.." || exit 1
+
 echo "🚀 Starting Vexl Converter Backend Locally"
 echo "=============================================="
 echo ""

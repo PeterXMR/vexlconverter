@@ -1,83 +1,78 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* App shell — topbar + workspace grid.
+ * Flat near-black background (no radial-gradient aurora); compact topbar with
+ * wordmark + mode tabs; two-column workspace at >=1080px. */
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Roboto',
-               'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-  background: #000000;
-  color: #FFFFFF;
+.app-shell {
   min-height: 100vh;
-  padding: 0;
-  overflow-x: hidden;
+  background: var(--bg-0);
+  display: flex;
+  flex-direction: column;
 }
 
-.App {
-  min-height: 100vh;
-  background: #000000;
-  padding-bottom: 4rem;
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-1);
 }
 
-/* Vexl-inspired gradient background */
-.App::before {
-  content: '';
-  position: fixed;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle at 30% 50%, rgba(252, 3, 119, 0.15) 0%, transparent 50%),
-              radial-gradient(circle at 70% 80%, rgba(148, 0, 255, 0.15) 0%, transparent 50%);
-  animation: gradientShift 20s ease infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-
-@keyframes gradientShift {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  50% { transform: translate(-5%, -5%) rotate(180deg); }
-}
-
-.App > * {
-  position: relative;
-  z-index: 1;
-}
-
-.header {
-  text-align: center;
-  padding: 4rem 2rem 1.5rem;
-}
-
-.header h1 {
-  font-size: 4rem;
-  font-weight: 900;
-  margin: 0;
-  background: linear-gradient(135deg, #FC0377 0%, #9400FF 100%);
+.topbar .wordmark {
+  font-size: var(--t-lg);
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
-.extra-sections {
-  max-width: 1200px;
+.topbar .wordmark small {
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--text-mute);
+  margin-left: var(--s-2);
+  -webkit-text-fill-color: var(--text-mute);
+}
+
+.workspace {
+  max-width: 1440px;
+  width: 100%;
   margin: 0 auto;
-  padding: 0 2rem;
+  padding: var(--s-3);
+  display: grid;
+  gap: var(--s-3);
+  grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr);
+  grid-template-areas:
+    "convert chart"
+    "convert alerts";
+  align-items: start;
 }
 
-@media (max-width: 768px) {
-  .header {
-    padding: 2rem 1rem 1rem;
-  }
+.workspace > .convert-pane { grid-area: convert; }
+.workspace > .chart-pane   { grid-area: chart; }
+.workspace > .alerts-pane  { grid-area: alerts; }
 
-  .header h1 {
-    font-size: 2.5rem;
+@media (max-width: 1079px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "convert"
+      "chart"
+      "alerts";
   }
+}
 
-  .extra-sections {
-    padding: 0 1rem;
+@media (max-width: 640px) {
+  .topbar {
+    padding: var(--s-2) var(--s-3);
+    flex-wrap: wrap;
+  }
+  .workspace {
+    padding: var(--s-2);
+    gap: var(--s-2);
   }
 }

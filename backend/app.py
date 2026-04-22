@@ -1,19 +1,38 @@
+import bisect
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+import requests as http_requests
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_swagger_ui import get_swaggerui_blueprint
-from dotenv import load_dotenv
-import os
-import requests as http_requests
-from models import BTCPrice, CryptoPrice, PriceAlert, SessionLocal, SUPPORTED_CRYPTOS
-from scheduler import start_scheduler
-from decimal import Decimal
-from datetime import datetime, timedelta
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db
+from scheduler import start_scheduler
 
 load_dotenv()
 
+logging.basicConfig(
+    level=os.getenv('LOG_LEVEL', 'INFO').upper(),
+    format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-CORS(app)
+
+# CORS: comma-separated list of allowed origins; default is local dev frontend.
+_cors_origins_env = os.getenv('CORS_ORIGINS', 'http://localhost:3000')
+CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
+CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
+
+# Constants
+SATOSHIS_PER_BTC = 100_000_000
+MAX_AMOUNT = Decimal('1e12')
 
 # Swagger UI configuration
 SWAGGER_URL = '/api/docs'
@@ -32,13 +51,17 @@ def swagger_json():
     with open('swagger.json', 'r') as f:
         return jsonify(json.load(f))
 
-# Start price update scheduler
-try:
-    scheduler = start_scheduler()
-    print("Scheduler started successfully")
-except Exception as e:
-    print(f"Warning: Scheduler failed to start: {e}")
-    print("   API will still work, but prices won't auto-update")
+# Start price update scheduler (gunicorn --preload ensures master-only).
+# RUN_SCHEDULER=false lets tests skip the background job.
+if os.environ.get('RUN_SCHEDULER', 'true').lower() == 'true':
+    try:
+        scheduler = start_scheduler()
+        logger.info("Scheduler started successfully")
+    except Exception:
+        logger.exception("Scheduler failed to start; API will still work but prices won't auto-update")
+        scheduler = None
+else:
+    logger.info("Scheduler disabled via RUN_SCHEDULER env var")
     scheduler = None
 
 VALID_FIAT_CURRENCIES = {
@@ -52,7 +75,23 @@ VALID_FIAT_CURRENCIES = {
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy', 'version': '0.2.0'})
+    """Liveness/readiness probe. Exercises the DB with SELECT 1."""
+    db_status = 'ok'
+    http_status = 200
+    try:
+        with get_db() as db:
+            db.execute(text('SELECT 1'))
+    except Exception:
+        logger.exception("Health check DB probe failed")
+        db_status = 'error'
+        http_status = 503
+
+    payload = {
+        'status': 'healthy' if db_status == 'ok' else 'unhealthy',
+        'db': db_status,
+        'version': '0.2.0',
+    }
+    return jsonify(payload), http_status
 
 
 # ─── Crypto List ─────────────────────────────────────
@@ -78,77 +117,75 @@ def get_latest_prices():
         return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
 
     try:
-        db = SessionLocal()
-        latest = db.query(
-            CryptoPrice.id,
-            CryptoPrice.crypto_id,
-            CryptoPrice.price_usd,
-            CryptoPrice.price_eur,
-            CryptoPrice.timestamp
-        ).filter(
-            CryptoPrice.crypto_id == crypto
-        ).order_by(CryptoPrice.timestamp.desc()).first()
-        db.close()
+        with get_db() as db:
+            latest = db.query(
+                CryptoPrice.id,
+                CryptoPrice.crypto_id,
+                CryptoPrice.price_usd,
+                CryptoPrice.price_eur,
+                CryptoPrice.timestamp
+            ).filter(
+                CryptoPrice.crypto_id == crypto
+            ).order_by(CryptoPrice.timestamp.desc()).first()
 
-        if not latest:
-            # Fallback to legacy table for bitcoin
+            if not latest:
+                # Fallback to legacy table for bitcoin
+                if crypto == 'bitcoin':
+                    legacy = db.query(BTCPrice).order_by(BTCPrice.timestamp.desc()).first()
+                    if legacy:
+                        return jsonify({'success': True, 'data': legacy.to_dict()})
+                return jsonify({'success': False, 'error': 'No price data available'}), 404
+
+            info = SUPPORTED_CRYPTOS[crypto]
+            result = {
+                'id': latest.id,
+                'crypto_id': crypto,
+                'symbol': info['symbol'],
+                'name': info['name'],
+                'price_usd': float(latest.price_usd),
+                'price_eur': float(latest.price_eur),
+                'timestamp': latest.timestamp.isoformat(),
+            }
+            # Backwards compat for bitcoin
             if crypto == 'bitcoin':
-                db = SessionLocal()
-                legacy = db.query(BTCPrice).order_by(BTCPrice.timestamp.desc()).first()
-                db.close()
-                if legacy:
-                    return jsonify({'success': True, 'data': legacy.to_dict()})
-            return jsonify({'success': False, 'error': 'No price data available'}), 404
+                result['btc_usd'] = result['price_usd']
+                result['btc_eur'] = result['price_eur']
 
-        info = SUPPORTED_CRYPTOS[crypto]
-        result = {
-            'id': latest.id,
-            'crypto_id': crypto,
-            'symbol': info['symbol'],
-            'name': info['name'],
-            'price_usd': float(latest.price_usd),
-            'price_eur': float(latest.price_eur),
-            'timestamp': latest.timestamp.isoformat(),
-        }
-        # Backwards compat for bitcoin
-        if crypto == 'bitcoin':
-            result['btc_usd'] = result['price_usd']
-            result['btc_eur'] = result['price_eur']
-
-        return jsonify({'success': True, 'data': result})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': True, 'data': result})
+    except Exception:
+        logger.exception("Failed to fetch latest price for %s", crypto)
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/prices/all', methods=['GET'])
 def get_all_latest_prices():
     """Get latest prices for all supported cryptos in one call."""
     try:
-        db = SessionLocal()
-        results = {}
-        for crypto_id, info in SUPPORTED_CRYPTOS.items():
-            latest = db.query(
-                CryptoPrice.price_usd,
-                CryptoPrice.price_eur,
-                CryptoPrice.timestamp
-            ).filter(
-                CryptoPrice.crypto_id == crypto_id
-            ).order_by(CryptoPrice.timestamp.desc()).first()
+        with get_db() as db:
+            results = {}
+            for crypto_id, info in SUPPORTED_CRYPTOS.items():
+                latest = db.query(
+                    CryptoPrice.price_usd,
+                    CryptoPrice.price_eur,
+                    CryptoPrice.timestamp
+                ).filter(
+                    CryptoPrice.crypto_id == crypto_id
+                ).order_by(CryptoPrice.timestamp.desc()).first()
 
-            if latest:
-                results[crypto_id] = {
-                    'crypto_id': crypto_id,
-                    'symbol': info['symbol'],
-                    'name': info['name'],
-                    'price_usd': float(latest.price_usd),
-                    'price_eur': float(latest.price_eur),
-                    'timestamp': latest.timestamp.isoformat(),
-                }
-        db.close()
+                if latest:
+                    results[crypto_id] = {
+                        'crypto_id': crypto_id,
+                        'symbol': info['symbol'],
+                        'name': info['name'],
+                        'price_usd': float(latest.price_usd),
+                        'price_eur': float(latest.price_eur),
+                        'timestamp': latest.timestamp.isoformat(),
+                    }
 
         return jsonify({'success': True, 'data': results})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to fetch all latest prices")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 # ─── Conversion ──────────────────────────────────────
@@ -175,15 +212,17 @@ def convert_crypto():
         if amount <= 0:
             return jsonify({'success': False, 'error': 'Amount must be greater than 0'}), 400
 
-        db = SessionLocal()
-        latest = db.query(
-            CryptoPrice.price_usd,
-            CryptoPrice.price_eur,
-            CryptoPrice.timestamp
-        ).filter(
-            CryptoPrice.crypto_id == crypto
-        ).order_by(CryptoPrice.timestamp.desc()).first()
-        db.close()
+        if amount > MAX_AMOUNT:
+            return jsonify({'success': False, 'error': 'Amount exceeds maximum allowed'}), 400
+
+        with get_db() as db:
+            latest = db.query(
+                CryptoPrice.price_usd,
+                CryptoPrice.price_eur,
+                CryptoPrice.timestamp
+            ).filter(
+                CryptoPrice.crypto_id == crypto
+            ).order_by(CryptoPrice.timestamp.desc()).first()
 
         if not latest:
             return jsonify({'success': False, 'error': 'No price data available'}), 404
@@ -211,8 +250,9 @@ def convert_crypto():
             result['rates']['btc_eur'] = result['rates']['eur']
 
         return jsonify({'success': True, 'data': result})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to convert crypto -> fiat")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/convert/reverse', methods=['POST'])
@@ -242,21 +282,26 @@ def convert_fiat_to_crypto():
         if fiat_amount <= 0:
             return jsonify({'success': False, 'error': 'fiat_amount must be greater than 0'}), 400
 
+        if fiat_amount > MAX_AMOUNT:
+            return jsonify({'success': False, 'error': 'fiat_amount exceeds maximum allowed'}), 400
+
         if fiat_currency not in ('usd', 'eur'):
             return jsonify({'success': False, 'error': 'fiat_currency must be usd or eur'}), 400
+
+        if fiat_currency not in VALID_FIAT_CURRENCIES:
+            return jsonify({'success': False, 'error': f'Unknown fiat currency: {fiat_currency}'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
             return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
 
-        db = SessionLocal()
-        latest = db.query(
-            CryptoPrice.price_usd,
-            CryptoPrice.price_eur,
-            CryptoPrice.timestamp
-        ).filter(
-            CryptoPrice.crypto_id == crypto
-        ).order_by(CryptoPrice.timestamp.desc()).first()
-        db.close()
+        with get_db() as db:
+            latest = db.query(
+                CryptoPrice.price_usd,
+                CryptoPrice.price_eur,
+                CryptoPrice.timestamp
+            ).filter(
+                CryptoPrice.crypto_id == crypto
+            ).order_by(CryptoPrice.timestamp.desc()).first()
 
         if not latest:
             return jsonify({'success': False, 'error': 'No price data available'}), 404
@@ -267,7 +312,7 @@ def convert_fiat_to_crypto():
 
         crypto_amount = float(fiat_amount / rate)
         info = SUPPORTED_CRYPTOS[crypto]
-        sats_amount = round(crypto_amount * 100000000) if crypto == 'bitcoin' else None
+        sats_amount = round(crypto_amount * SATOSHIS_PER_BTC) if crypto == 'bitcoin' else None
 
         result = {
             'crypto': crypto,
@@ -282,8 +327,9 @@ def convert_fiat_to_crypto():
             result['sats_amount'] = sats_amount
 
         return jsonify({'success': True, 'data': result})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to convert fiat -> crypto")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 # ─── Price Alerts ────────────────────────────────────
@@ -303,66 +349,66 @@ def create_alert():
 
         if target_price is None or float(target_price) <= 0:
             return jsonify({'success': False, 'error': 'target_price must be positive'}), 400
+        if Decimal(str(target_price)) > MAX_AMOUNT:
+            return jsonify({'success': False, 'error': 'target_price exceeds maximum allowed'}), 400
         if currency not in ('usd', 'eur'):
             return jsonify({'success': False, 'error': 'currency must be usd or eur'}), 400
         if direction not in ('above', 'below'):
             return jsonify({'success': False, 'error': 'direction must be above or below'}), 400
 
-        db = SessionLocal()
+        with get_db() as db:
+            # Check current price to see if alert should trigger immediately
+            already_triggered = False
+            latest = db.query(
+                CryptoPrice.price_usd,
+                CryptoPrice.price_eur,
+            ).filter(
+                CryptoPrice.crypto_id == crypto
+            ).order_by(CryptoPrice.timestamp.desc()).first()
 
-        # Check current price to see if alert should trigger immediately
-        already_triggered = False
-        latest = db.query(
-            CryptoPrice.price_usd,
-            CryptoPrice.price_eur,
-        ).filter(
-            CryptoPrice.crypto_id == crypto
-        ).order_by(CryptoPrice.timestamp.desc()).first()
+            if latest:
+                current_price = float(latest.price_usd if currency == 'usd' else latest.price_eur)
+                target_val = float(target_price)
+                if direction == 'above' and current_price >= target_val:
+                    already_triggered = True
+                elif direction == 'below' and current_price <= target_val:
+                    already_triggered = True
 
-        if latest:
-            current_price = float(latest.price_usd if currency == 'usd' else latest.price_eur)
-            target_val = float(target_price)
-            if direction == 'above' and current_price >= target_val:
-                already_triggered = True
-            elif direction == 'below' and current_price <= target_val:
-                already_triggered = True
-
-        alert = PriceAlert(
-            crypto=crypto,
-            target_price=target_price,
-            currency=currency,
-            direction=direction,
-            is_triggered=already_triggered,
-            triggered_at=datetime.utcnow() if already_triggered else None,
-        )
-        db.add(alert)
-        db.commit()
-        result = alert.to_dict()
-        db.close()
+            alert = PriceAlert(
+                crypto=crypto,
+                target_price=target_price,
+                currency=currency,
+                direction=direction,
+                is_triggered=already_triggered,
+                triggered_at=datetime.now(timezone.utc) if already_triggered else None,
+            )
+            db.add(alert)
+            db.commit()
+            result = alert.to_dict()
 
         return jsonify({'success': True, 'data': result}), 201
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to create alert")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/alerts', methods=['GET'])
 def get_alerts():
     """List all active (non-triggered) alerts."""
     try:
-        db = SessionLocal()
-        alerts = db.query(
-            PriceAlert.id,
-            PriceAlert.crypto,
-            PriceAlert.target_price,
-            PriceAlert.currency,
-            PriceAlert.direction,
-            PriceAlert.is_triggered,
-            PriceAlert.created_at,
-            PriceAlert.triggered_at,
-        ).filter(
-            PriceAlert.is_triggered == False
-        ).order_by(PriceAlert.created_at.desc()).all()
-        db.close()
+        with get_db() as db:
+            alerts = db.query(
+                PriceAlert.id,
+                PriceAlert.crypto,
+                PriceAlert.target_price,
+                PriceAlert.currency,
+                PriceAlert.direction,
+                PriceAlert.is_triggered,
+                PriceAlert.created_at,
+                PriceAlert.triggered_at,
+            ).filter(
+                PriceAlert.is_triggered.is_(False)
+            ).order_by(PriceAlert.created_at.desc()).all()
 
         data = [{
             'id': a.id,
@@ -376,25 +422,26 @@ def get_alerts():
         } for a in alerts]
 
         return jsonify({'success': True, 'data': data})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to list alerts")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
 def delete_alert(alert_id):
     """Delete a price alert."""
     try:
-        db = SessionLocal()
-        deleted = db.query(PriceAlert).filter(PriceAlert.id == alert_id).delete()
-        db.commit()
-        db.close()
+        with get_db() as db:
+            deleted = db.query(PriceAlert).filter(PriceAlert.id == alert_id).delete()
+            db.commit()
 
         if not deleted:
             return jsonify({'success': False, 'error': 'Alert not found'}), 404
 
         return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to delete alert %s", alert_id)
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/alerts/triggered', methods=['GET'])
@@ -403,19 +450,18 @@ def get_triggered_alerts():
     Uses seen_by_client flag instead of a time window, so alerts
     persist until the frontend acknowledges them."""
     try:
-        db = SessionLocal()
-        alerts = db.query(
-            PriceAlert.id,
-            PriceAlert.crypto,
-            PriceAlert.target_price,
-            PriceAlert.currency,
-            PriceAlert.direction,
-            PriceAlert.triggered_at,
-        ).filter(
-            PriceAlert.is_triggered == True,
-            PriceAlert.seen_by_client == False
-        ).all()
-        db.close()
+        with get_db() as db:
+            alerts = db.query(
+                PriceAlert.id,
+                PriceAlert.crypto,
+                PriceAlert.target_price,
+                PriceAlert.currency,
+                PriceAlert.direction,
+                PriceAlert.triggered_at,
+            ).filter(
+                PriceAlert.is_triggered.is_(True),
+                PriceAlert.seen_by_client.is_(False)
+            ).all()
 
         data = [{
             'id': a.id,
@@ -427,8 +473,9 @@ def get_triggered_alerts():
         } for a in alerts]
 
         return jsonify({'success': True, 'data': data})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to list triggered alerts")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 @app.route('/api/alerts/ack', methods=['POST'])
@@ -444,22 +491,25 @@ def acknowledge_alerts():
         if not isinstance(alert_ids, list) or len(alert_ids) == 0:
             return jsonify({'success': False, 'error': 'ids must be a non-empty array'}), 400
 
-        db = SessionLocal()
-        updated = db.query(PriceAlert).filter(
-            PriceAlert.id.in_(alert_ids),
-            PriceAlert.is_triggered == True
-        ).update({
-            PriceAlert.seen_by_client: True
-        }, synchronize_session=False)
-        db.commit()
-        db.close()
+        with get_db() as db:
+            updated = db.query(PriceAlert).filter(
+                PriceAlert.id.in_(alert_ids),
+                PriceAlert.is_triggered.is_(True)
+            ).update({
+                PriceAlert.seen_by_client: True
+            }, synchronize_session=False)
+            db.commit()
 
         return jsonify({'success': True, 'acknowledged': updated})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to acknowledge alerts")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 # ─── Price History ───────────────────────────────────
+
+_TRUNC_WHITELIST = {'hour', 'day', 'week', 'month'}
+
 
 @app.route('/api/prices/history', methods=['GET'])
 def get_price_history():
@@ -479,7 +529,13 @@ def get_price_history():
             'error': f'Invalid period. Must be one of: {", ".join(valid_periods)}'
         }), 400
 
-    now = datetime.utcnow()
+    if crypto not in SUPPORTED_CRYPTOS:
+        return jsonify({
+            'success': False,
+            'error': f'Unknown crypto: {crypto}'
+        }), 400
+
+    now = datetime.now(timezone.utc)
     period_deltas = {
         '24h': timedelta(hours=24),
         '7d': timedelta(days=7),
@@ -489,61 +545,72 @@ def get_price_history():
     cutoff = now - period_deltas[period]
 
     try:
-        db = SessionLocal()
+        with get_db() as db:
+            if period == '24h':
+                prices = db.query(
+                    CryptoPrice.timestamp,
+                    CryptoPrice.price_usd,
+                    CryptoPrice.price_eur
+                ).filter(
+                    CryptoPrice.crypto_id == crypto,
+                    CryptoPrice.timestamp >= cutoff
+                ).order_by(CryptoPrice.timestamp.asc()).all()
 
-        if period == '24h':
-            prices = db.query(
-                CryptoPrice.timestamp,
-                CryptoPrice.price_usd,
-                CryptoPrice.price_eur
-            ).filter(
-                CryptoPrice.crypto_id == crypto,
-                CryptoPrice.timestamp >= cutoff
-            ).order_by(CryptoPrice.timestamp.asc()).all()
+                data = [{
+                    'timestamp': p.timestamp.isoformat(),
+                    'price_usd': float(p.price_usd),
+                    'price_eur': float(p.price_eur),
+                } for p in prices]
+            elif period == '7d':
+                trunc = 'hour'
+                if trunc not in _TRUNC_WHITELIST:
+                    return jsonify({'success': False, 'error': 'Invalid bucket'}), 400
+                sql = (
+                    "SELECT "
+                    f"date_trunc('{trunc}', timestamp) AS bucket, "
+                    "AVG(price_usd) AS price_usd, "
+                    "AVG(price_eur) AS price_eur "
+                    "FROM crypto_prices "
+                    "WHERE crypto_id = :crypto AND timestamp >= :cutoff "
+                    "GROUP BY bucket "
+                    "ORDER BY bucket ASC"
+                )
+                prices = db.execute(
+                    text(sql),
+                    {'crypto': crypto, 'cutoff': cutoff}
+                ).fetchall()
 
-            data = [{
-                'timestamp': p.timestamp.isoformat(),
-                'price_usd': float(p.price_usd),
-                'price_eur': float(p.price_eur),
-            } for p in prices]
-        elif period == '7d':
-            trunc = 'hour'
-            prices = db.execute(text("""
-                SELECT
-                    date_trunc(:trunc, timestamp) AS bucket,
-                    AVG(price_usd) AS price_usd,
-                    AVG(price_eur) AS price_eur
-                FROM crypto_prices
-                WHERE crypto_id = :crypto AND timestamp >= :cutoff
-                GROUP BY bucket
-                ORDER BY bucket ASC
-            """), {'trunc': trunc, 'crypto': crypto, 'cutoff': cutoff}).fetchall()
+                data = [{
+                    'timestamp': row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+                    'price_usd': round(float(row[1]), 2),
+                    'price_eur': round(float(row[2]), 2),
+                } for row in prices]
+            else:
+                trunc = 'day'
+                if trunc not in _TRUNC_WHITELIST:
+                    return jsonify({'success': False, 'error': 'Invalid bucket'}), 400
+                sql = (
+                    "SELECT "
+                    f"date_trunc('{trunc}', timestamp) AS bucket, "
+                    "AVG(price_usd) AS price_usd, "
+                    "AVG(price_eur) AS price_eur "
+                    "FROM crypto_prices "
+                    "WHERE crypto_id = :crypto AND timestamp >= :cutoff "
+                    "GROUP BY bucket "
+                    "ORDER BY bucket ASC"
+                )
+                prices = db.execute(
+                    text(sql),
+                    {'crypto': crypto, 'cutoff': cutoff}
+                ).fetchall()
 
-            data = [{
-                'timestamp': row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
-                'price_usd': round(float(row[1]), 2),
-                'price_eur': round(float(row[2]), 2),
-            } for row in prices]
-        else:
-            prices = db.execute(text("""
-                SELECT
-                    date_trunc('day', timestamp) AS bucket,
-                    AVG(price_usd) AS price_usd,
-                    AVG(price_eur) AS price_eur
-                FROM crypto_prices
-                WHERE crypto_id = :crypto AND timestamp >= :cutoff
-                GROUP BY bucket
-                ORDER BY bucket ASC
-            """), {'crypto': crypto, 'cutoff': cutoff}).fetchall()
+                data = [{
+                    'timestamp': row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+                    'price_usd': round(float(row[1]), 2),
+                    'price_eur': round(float(row[2]), 2),
+                } for row in prices]
 
-            data = [{
-                'timestamp': row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
-                'price_usd': round(float(row[1]), 2),
-                'price_eur': round(float(row[2]), 2),
-            } for row in prices]
-
-        db_data = data
-        db.close()
+            db_data = data
 
         # If we have enough data from the DB, return it directly
         if len(db_data) >= 2:
@@ -573,12 +640,36 @@ def get_price_history():
             cg_eur.raise_for_status()
 
             usd_prices = cg_usd.json().get('prices', [])
-            eur_lookup = {int(ts): price for ts, price in cg_eur.json().get('prices', [])}
+            eur_prices = cg_eur.json().get('prices', [])
+
+            # CoinGecko /market_chart requires one currency per call. The two
+            # calls happen sequentially, so the *final* point's timestamp can
+            # drift by the request latency. Prior points align exactly.
+            # Nearest-neighbour match within tolerance; skip the point if we
+            # have no close EUR reading (prevents writing EUR=0 rows that then
+            # become the "latest price" served to converters).
+            eur_sorted = sorted((int(ts), price) for ts, price in eur_prices)
+            eur_keys = [k for k, _ in eur_sorted]
+            TOL_MS = 60_000  # 60s
+
+            def nearest_eur(ts_ms):
+                if not eur_keys:
+                    return None
+                i = bisect.bisect_left(eur_keys, ts_ms)
+                candidates = []
+                if i < len(eur_keys):
+                    candidates.append(eur_sorted[i])
+                if i > 0:
+                    candidates.append(eur_sorted[i - 1])
+                best = min(candidates, key=lambda kv: abs(kv[0] - ts_ms))
+                return best[1] if abs(best[0] - ts_ms) <= TOL_MS else None
 
             cg_data = []
             for ts_ms, usd_price in usd_prices:
-                ts_dt = datetime.utcfromtimestamp(ts_ms / 1000)
-                eur_price = eur_lookup.get(int(ts_ms), 0)
+                eur_price = nearest_eur(int(ts_ms))
+                if eur_price is None:
+                    continue
+                ts_dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
                 cg_data.append({
                     'timestamp': ts_dt.isoformat(),
                     'price_usd': round(usd_price, 2),
@@ -586,22 +677,45 @@ def get_price_history():
                 })
 
             # Persist CoinGecko data into the DB so future requests serve from DB
-            # and stop triggering expensive/rate-limited fallback calls
+            # and stop triggering expensive/rate-limited fallback calls.
+            # Use ON CONFLICT DO NOTHING to tolerate duplicates; if the unique
+            # constraint isn't present, fall back to per-row try/except.
             if cg_data:
                 try:
-                    seed_db = SessionLocal()
-                    for point in cg_data:
-                        ts = datetime.fromisoformat(point['timestamp'])
-                        seed_db.add(CryptoPrice(
-                            crypto_id=crypto,
-                            price_usd=point['price_usd'],
-                            price_eur=point['price_eur'],
-                            timestamp=ts,
-                        ))
-                    seed_db.commit()
-                    seed_db.close()
+                    with get_db() as seed_db:
+                        try:
+                            insert_sql = text(
+                                "INSERT INTO crypto_prices "
+                                "(crypto_id, price_usd, price_eur, timestamp) "
+                                "VALUES (:crypto_id, :price_usd, :price_eur, :timestamp) "
+                                "ON CONFLICT (crypto_id, timestamp) DO NOTHING"
+                            )
+                            for point in cg_data:
+                                ts = datetime.fromisoformat(point['timestamp'])
+                                seed_db.execute(insert_sql, {
+                                    'crypto_id': crypto,
+                                    'price_usd': point['price_usd'],
+                                    'price_eur': point['price_eur'],
+                                    'timestamp': ts,
+                                })
+                            seed_db.commit()
+                        except Exception:
+                            seed_db.rollback()
+                            # Fallback: per-row inserts tolerating IntegrityError
+                            for point in cg_data:
+                                ts = datetime.fromisoformat(point['timestamp'])
+                                try:
+                                    seed_db.add(CryptoPrice(
+                                        crypto_id=crypto,
+                                        price_usd=point['price_usd'],
+                                        price_eur=point['price_eur'],
+                                        timestamp=ts,
+                                    ))
+                                    seed_db.commit()
+                                except IntegrityError:
+                                    seed_db.rollback()
                 except Exception:
-                    pass  # Persistence is best-effort; still return the data
+                    logger.warning("Best-effort persistence of CoinGecko history failed", exc_info=True)
 
             return jsonify({
                 'success': True,
@@ -614,6 +728,7 @@ def get_price_history():
         except Exception as cg_err:
             # CoinGecko failed - return whatever DB data we have (even if < 2 points)
             # so the frontend can show something rather than a blank chart
+            logger.warning("CoinGecko history fallback failed: %s", cg_err)
             return jsonify({
                 'success': True,
                 'period': period,
@@ -624,28 +739,31 @@ def get_price_history():
                 'warning': f'Limited data. CoinGecko fallback failed: {str(cg_err)}'
             })
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception("Failed to fetch price history")
+        return jsonify({'error': 'internal server error'}), 500
 
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5001))
-    print(f"\n{'='*60}")
-    print(f"  Vexl Converter API v0.2.0")
-    print(f"  Running on http://localhost:{port}")
-    print(f"{'='*60}")
-    print("Available endpoints:")
-    print(f"  GET  /api/health")
-    print(f"  GET  /api/cryptos")
-    print(f"  GET  /api/prices/latest?crypto=bitcoin")
-    print(f"  GET  /api/prices/all")
-    print(f"  GET  /api/prices/history?period=24h&crypto=bitcoin")
-    print(f"  POST /api/convert")
-    print(f"  POST /api/convert/reverse")
-    print(f"  POST /api/alerts")
-    print(f"  GET  /api/alerts")
-    print(f"  GET  /api/alerts/triggered")
-    print(f"  DEL  /api/alerts/<id>")
-    print(f"\n  Swagger API Docs: http://localhost:{port}/api/docs")
-    print(f"{'='*60}\n")
-    app.run(debug=True, port=port, host='0.0.0.0')
+    debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    logger.info("=" * 60)
+    logger.info("  Vexl Converter API v0.2.0")
+    logger.info("  Running on http://localhost:%s", port)
+    logger.info("=" * 60)
+    logger.info("Available endpoints:")
+    logger.info("  GET  /api/health")
+    logger.info("  GET  /api/cryptos")
+    logger.info("  GET  /api/prices/latest?crypto=bitcoin")
+    logger.info("  GET  /api/prices/all")
+    logger.info("  GET  /api/prices/history?period=24h&crypto=bitcoin")
+    logger.info("  POST /api/convert")
+    logger.info("  POST /api/convert/reverse")
+    logger.info("  POST /api/alerts")
+    logger.info("  GET  /api/alerts")
+    logger.info("  GET  /api/alerts/triggered")
+    logger.info("  POST /api/alerts/ack")
+    logger.info("  DEL  /api/alerts/<id>")
+    logger.info("  Swagger API Docs: http://localhost:%s/api/docs", port)
+    logger.info("=" * 60)
+    app.run(debug=debug, port=port, host='0.0.0.0')

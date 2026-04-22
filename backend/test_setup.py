@@ -12,42 +12,42 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from flask import Flask
+    from flask import Flask  # noqa: F401 - import-presence probe
     print("✓ Flask")
 except ImportError as e:
     print(f"✗ Flask: {e}")
     sys.exit(1)
 
 try:
-    from flask_cors import CORS
+    from flask_cors import CORS  # noqa: F401 - import-presence probe
     print("✓ flask-cors")
 except ImportError as e:
     print(f"✗ flask-cors: {e}")
     sys.exit(1)
 
 try:
-    import psycopg
+    import psycopg  # noqa: F401 - import-presence probe
     print("✓ psycopg")
 except ImportError as e:
     print(f"✗ psycopg: {e}")
     sys.exit(1)
 
 try:
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine  # noqa: F401 - import-presence probe
     print("✓ SQLAlchemy")
 except ImportError as e:
     print(f"✗ SQLAlchemy: {e}")
     sys.exit(1)
 
 try:
-    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.schedulers.background import BackgroundScheduler  # noqa: F401 - import-presence probe
     print("✓ APScheduler")
 except ImportError as e:
     print(f"✗ APScheduler: {e}")
     sys.exit(1)
 
 try:
-    import requests
+    import requests  # noqa: F401 - import-presence probe
     print("✓ requests")
 except ImportError as e:
     print(f"✗ requests: {e}")
@@ -61,14 +61,14 @@ load_dotenv()
 
 # Try importing the app
 try:
-    from models import BTCPrice, SessionLocal
+    from models import BTCPrice, SessionLocal  # noqa: F401 - import-presence probe
     print("✓ Models imported")
 except Exception as e:
     print(f"✗ Models import failed: {e}")
     sys.exit(1)
 
 try:
-    from scheduler import start_scheduler
+    from scheduler import start_scheduler  # noqa: F401 - import-presence probe
     print("✓ Scheduler imported")
 except Exception as e:
     print(f"✗ Scheduler import failed: {e}")
