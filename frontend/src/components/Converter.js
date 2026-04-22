@@ -212,6 +212,9 @@ function Converter({ mode }) {
       setBtcAmount('');
       setUsdAmount('');
       setEurAmount('');
+      setAdditionalCurrencies(prev =>
+        prev.map(c => ({ ...c, amount: null }))
+      );
       return;
     }
     if (unit === 'BTC') {
@@ -227,6 +230,9 @@ function Converter({ mode }) {
     } else {
       setUsdAmount('');
       setEurAmount('');
+      setAdditionalCurrencies(prev =>
+        prev.map(c => ({ ...c, amount: null }))
+      );
     }
   };
 
