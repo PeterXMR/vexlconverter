@@ -9,8 +9,7 @@ Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live pric
 ![CI](https://github.com/PeterXMR/vexlconverter/actions/workflows/docker-image.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-0.2.0-blue)
 
-<!-- TODO: add a real screenshot at docs/screenshot.png -->
-![Screenshot](docs/screenshot.png)
+![Screenshot](screenshot.png)
 
 ## Features
 
