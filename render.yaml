@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: vexlconverter-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: COINGECKO_API_URL
+        value: https://api.coingecko.com/api/v3/simple/price
+      - key: PRICE_UPDATE_INTERVAL
+        value: "300"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
