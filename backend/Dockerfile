@@ -32,7 +32,7 @@ EXPOSE 5001
 
 # Healthcheck against the Flask /api/health endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:5001/api/health || exit 1
+    CMD curl -fsS "http://localhost:${PORT:-5001}/api/health" || exit 1
 
 # Create non-root user and own the app directory (done late so pip had root)
 RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
