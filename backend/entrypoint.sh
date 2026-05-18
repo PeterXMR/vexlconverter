@@ -3,21 +3,26 @@
 
 set -e
 
-echo "Waiting for PostgreSQL to be ready..."
+# Local docker-compose sets DB_HOST and we can probe the listener directly.
+# Managed providers (Render+Neon, etc.) only inject DATABASE_URL, so skip the
+# wait — SQLAlchemy will surface a clear error on first query if the DB is
+# unreachable.
+if [ -n "$DB_HOST" ]; then
+  echo "Waiting for PostgreSQL at $DB_HOST..."
+  until pg_isready -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; do
+    echo "PostgreSQL is unavailable - sleeping"
+    sleep 2
+  done
+  echo "PostgreSQL is up - starting application"
+fi
 
-# Wait for PostgreSQL to accept connections. pg_isready is a listener probe
-# and needs no credentials, so we don't have to expose POSTGRES_PASSWORD to
-# the backend container (the secret only lives inside DATABASE_URL).
-until pg_isready -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; do
-  echo "PostgreSQL is unavailable - sleeping"
-  sleep 2
-done
-
-echo "PostgreSQL is up - starting application"
+# Bind port: Render and most PaaS providers inject $PORT; fall back to 5001
+# for local docker-compose.
+BIND_PORT="${PORT:-5001}"
 
 # Start the Flask application with gunicorn.
 # --preload ensures APScheduler runs in the master only (no duplicate jobs).
 # --config gunicorn.conf.py disposes the forked engine per worker to avoid
 # shared-connection races (ResourceClosedError).
-exec gunicorn --config gunicorn.conf.py --preload --workers 2 --bind 0.0.0.0:5001 --access-logfile - --error-logfile - app:app
+exec gunicorn --config gunicorn.conf.py --preload --workers 2 --bind "0.0.0.0:${BIND_PORT}" --access-logfile - --error-logfile - app:app
 
