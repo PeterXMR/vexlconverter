@@ -239,14 +239,21 @@ function AlertManager() {
 
   return (
     <div className="alert-manager">
-      {notifications.map((n) => (
-        <div key={n.id} className="alert-notification">
-          {n.message}
-          <button className="alert-notification-close" onClick={() => dismissNotification(n.id)} type="button">
-            x
-          </button>
-        </div>
-      ))}
+      <div className="alert-notification-stack" role="status" aria-live="polite">
+        {notifications.map((n) => (
+          <div key={n.id} className="alert-notification">
+            {n.message}
+            <button
+              className="alert-notification-close"
+              onClick={() => dismissNotification(n.id)}
+              type="button"
+              aria-label="Dismiss notification"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+      </div>
 
       <div className="alert-manager-box">
         <h2>Price Alerts</h2>
