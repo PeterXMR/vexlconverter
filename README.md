@@ -2,6 +2,8 @@
 
 Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live prices, historical charts, and user-configurable alerts.
 
+🌐 **[Live Demo](https://vexlconverter.vercel.app)** · 🔌 **[API](https://vexlconverter-api.onrender.com/api/health)**
+
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
 ![Postgres](https://img.shields.io/badge/postgres-15-336791)
