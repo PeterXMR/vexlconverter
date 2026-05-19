@@ -105,3 +105,53 @@
   display: inline-block;
   vertical-align: middle;
 }
+
+.error-boundary {
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  font-size: var(--t-sm);
+}
+
+.error-boundary h3 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-md);
+  color: var(--accent);
+}
+
+.error-boundary p {
+  margin: 0 0 var(--s-3);
+  color: var(--text-mute);
+}
+
+.error-boundary-reload {
+  appearance: none;
+  background: var(--accent);
+  color: var(--bg-0);
+  border: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.error-boundary-reload:hover,
+.error-boundary-reload:focus-visible {
+  filter: brightness(1.1);
+}
+
+.error-boundary details {
+  margin-top: var(--s-3);
+  color: var(--text-mute);
+}
+
+.error-boundary pre {
+  margin-top: var(--s-2);
+  padding: var(--s-2);
+  background: var(--bg-0);
+  border-radius: var(--r-sm);
+  font-size: var(--t-xs);
+  overflow-x: auto;
+}

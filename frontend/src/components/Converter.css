@@ -210,12 +210,17 @@ button.arrow:focus-visible {
   font-size: var(--t-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  animation: pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+@media (prefers-reduced-motion: no-preference) {
+  .loading {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
 }
 
 /* ── Selects ── */

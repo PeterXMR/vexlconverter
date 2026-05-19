@@ -13,9 +13,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="wordmark">
-          Vexl Converter <small>v0.2.0</small>
-        </div>
+        <div className="wordmark">Vexl Converter</div>
         <ModeSwitch mode={mode} onModeChange={setMode} />
       </header>
       <main className="workspace">
