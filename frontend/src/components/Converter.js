@@ -211,6 +211,7 @@ function Converter({ mode }) {
   const [unit, setUnit] = useState('BTC');
   const [additionalCurrencies, setAdditionalCurrencies] = useState([]);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [pickerFilter, setPickerFilter] = useState('');
 
   // ─── Crypto mode state ─────────────────────
   const [sourceCrypto, setSourceCrypto] = useState('bitcoin');
@@ -390,6 +391,7 @@ function Converter({ mode }) {
     if (additionalCurrencies.find(c => c.code === currency.code)) return;
     setAdditionalCurrencies(prev => [...prev, { ...currency, rate: 0, amount: '' }]);
     setShowCurrencyPicker(false);
+    setPickerFilter('');
 
     // Populate the newly added currency's rate immediately using the already
     // computed USD amount. Going back through performBtcConversion would
@@ -670,28 +672,58 @@ function Converter({ mode }) {
       )}
 
       <div className="add-currency-section">
-        <button className="add-currency-btn" onClick={() => setShowCurrencyPicker(!showCurrencyPicker)} type="button">
+        <button
+          className="add-currency-btn"
+          onClick={() => {
+            setShowCurrencyPicker(!showCurrencyPicker);
+            setPickerFilter('');
+          }}
+          type="button"
+        >
           + Add Currency
         </button>
       </div>
 
-      {showCurrencyPicker && (
-        <div className="currency-picker">
-          <h3>Select Currency</h3>
-          <div className="currency-list">
-            {availableCurrenciesForPicker
-              .filter(curr => !additionalCurrencies.find(c => c.code === curr.code))
-              .map((currency) => (
-                <button key={currency.code} className="currency-option" onClick={() => addCurrency(currency)} type="button">
-                  <span className="currency-symbol">{currency.symbol}</span>
-                  <span className="currency-info">
-                    <strong>{currency.code}</strong> - {currency.name}
-                  </span>
-                </button>
-              ))}
+      {showCurrencyPicker && (() => {
+        // Filter by code (prefix), then by name (substring), both case-insensitive.
+        const q = pickerFilter.trim().toLowerCase();
+        const candidates = availableCurrenciesForPicker
+          .filter(curr => !additionalCurrencies.find(c => c.code === curr.code));
+        const filtered = q
+          ? candidates.filter(c =>
+              c.code.toLowerCase().includes(q) ||
+              c.name.toLowerCase().includes(q)
+            )
+          : candidates;
+        return (
+          <div className="currency-picker">
+            <h3>Select Currency</h3>
+            <input
+              type="text"
+              className="currency-picker-search"
+              placeholder="Search by code or name (e.g. ars, peso, euro)"
+              value={pickerFilter}
+              onChange={(e) => setPickerFilter(e.target.value)}
+              autoFocus
+              aria-label="Filter currency list"
+            />
+            <div className="currency-list">
+              {filtered.length === 0 ? (
+                <div className="currency-list-empty">No currencies match "{pickerFilter}"</div>
+              ) : (
+                filtered.map((currency) => (
+                  <button key={currency.code} className="currency-option" onClick={() => addCurrency(currency)} type="button">
+                    <span className="currency-symbol">{currency.symbol}</span>
+                    <span className="currency-info">
+                      <strong>{currency.code}</strong> - {currency.name}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {loading && <div className="loading">Converting...</div>}
     </div>
