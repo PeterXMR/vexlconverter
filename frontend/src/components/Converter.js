@@ -6,9 +6,10 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 const SATS_PER_BTC = 100000000;
 
-// open.er-api.com returns USD-base rates for ~160 fiat currencies and requires
-// no API key. Cached for 10 min so switching modes doesn't refetch.
-const FIAT_RATES_URL = 'https://open.er-api.com/v6/latest/USD';
+// Fiat rates are proxied through our backend (/api/fiat-rates) so we don't
+// leak visitor IPs to a third party and the call stays inside our CSP
+// connect-src. The backend handles upstream caching; we keep a small
+// browser-side cache to avoid pinging on every mode switch.
 const FIAT_RATES_TTL_MS = 10 * 60 * 1000;
 let _fiatRatesCache = null;
 let _fiatRatesFetchedAt = 0;
@@ -18,8 +19,8 @@ async function getUsdToFiatRates() {
   if (_fiatRatesCache && (now - _fiatRatesFetchedAt) < FIAT_RATES_TTL_MS) {
     return _fiatRatesCache;
   }
-  const response = await axios.get(FIAT_RATES_URL);
-  if (response?.data?.result === 'success' && response.data.rates) {
+  const response = await axios.get(`${API_URL}/fiat-rates`);
+  if (response?.data?.success && response.data.rates) {
     _fiatRatesCache = response.data.rates;
     _fiatRatesFetchedAt = now;
     return _fiatRatesCache;
@@ -179,11 +180,12 @@ function Converter({ mode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [additionalCurrencies.length]);
 
-  // Use open.er-api.com (ExchangeRate-API free tier, no key, 166 fiat currencies).
+  // Use the backend's /api/fiat-rates proxy (which fronts ExchangeRate-API).
   // Rationale: CoinGecko's /simple/price vs_currencies list is curated to ~30 fiats
   // and excludes some that our UI offers (e.g. PYG Paraguayan Guarani). Computing
   // BTC → USD → target_fiat via a dedicated fiat-rates provider gives full coverage
-  // and consistent cross-rates.
+  // and consistent cross-rates. Proxying through the backend keeps the call
+  // inside our CSP and avoids leaking visitor IPs to a third party.
   const fetchAdditionalRates = async (btcValue, btcUsdRate) => {
     try {
       const usdToFiat = await getUsdToFiatRates();
