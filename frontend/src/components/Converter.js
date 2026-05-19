@@ -28,38 +28,173 @@ async function getUsdToFiatRates() {
   throw new Error('Fiat rates provider returned an unexpected payload');
 }
 
+// Full ExchangeRate-API open-access currency list (162 codes, ISO 4217).
+// Sorted alphabetically by `code` so the picker order is predictable.
+// Symbols are best-effort — for currencies without a widely-recognised glyph,
+// the 3-letter code is used as the displayed prefix.
 const FIAT_CURRENCIES = [
-  { code: 'USD', symbol: '$', name: 'US Dollar' },
-  { code: 'EUR', symbol: '€', name: 'Euro' },
-  { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
-  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-  { code: 'CHF', symbol: 'Fr', name: 'Swiss Franc' },
-  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
-  { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
-  { code: 'MXN', symbol: '$', name: 'Mexican Peso' },
-  { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
-  { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
-  { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
-  { code: 'PLN', symbol: 'zł', name: 'Polish Zloty' },
-  { code: 'CZK', symbol: 'Kč', name: 'Czech Koruna' },
-  { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
-  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
-  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'AED', symbol: 'AED', name: 'UAE Dirham' },
+  { code: 'AFN', symbol: '؋',   name: 'Afghan Afghani' },
+  { code: 'ALL', symbol: 'L',   name: 'Albanian Lek' },
+  { code: 'AMD', symbol: '֏',   name: 'Armenian Dram' },
+  { code: 'ANG', symbol: 'ƒ',   name: 'Netherlands Antillean Guilder' },
+  { code: 'AOA', symbol: 'Kz',  name: 'Angolan Kwanza' },
+  { code: 'ARS', symbol: 'AR$', name: 'Argentine Peso' },
+  { code: 'AUD', symbol: 'A$',  name: 'Australian Dollar' },
+  { code: 'AWG', symbol: 'Afl', name: 'Aruban Florin' },
+  { code: 'AZN', symbol: '₼',   name: 'Azerbaijani Manat' },
+  { code: 'BAM', symbol: 'KM',  name: 'Bosnia-Herzegovina Convertible Mark' },
+  { code: 'BBD', symbol: 'Bds$', name: 'Barbadian Dollar' },
+  { code: 'BDT', symbol: '৳',   name: 'Bangladeshi Taka' },
+  { code: 'BGN', symbol: 'лв',  name: 'Bulgarian Lev' },
+  { code: 'BHD', symbol: 'BD',  name: 'Bahraini Dinar' },
+  { code: 'BIF', symbol: 'FBu', name: 'Burundian Franc' },
+  { code: 'BMD', symbol: 'BD$', name: 'Bermudian Dollar' },
+  { code: 'BND', symbol: 'B$',  name: 'Brunei Dollar' },
+  { code: 'BOB', symbol: 'Bs',  name: 'Bolivian Boliviano' },
+  { code: 'BRL', symbol: 'R$',  name: 'Brazilian Real' },
+  { code: 'BSD', symbol: 'BS$', name: 'Bahamian Dollar' },
+  { code: 'BTN', symbol: 'Nu',  name: 'Bhutanese Ngultrum' },
+  { code: 'BWP', symbol: 'P',   name: 'Botswanan Pula' },
+  { code: 'BYN', symbol: 'Br',  name: 'Belarusian Ruble' },
+  { code: 'BZD', symbol: 'BZ$', name: 'Belize Dollar' },
+  { code: 'CAD', symbol: 'C$',  name: 'Canadian Dollar' },
+  { code: 'CDF', symbol: 'FC',  name: 'Congolese Franc' },
+  { code: 'CHF', symbol: 'Fr',  name: 'Swiss Franc' },
+  { code: 'CLP', symbol: 'CL$', name: 'Chilean Peso' },
+  { code: 'CNY', symbol: '¥',   name: 'Chinese Yuan' },
+  { code: 'COP', symbol: 'CO$', name: 'Colombian Peso' },
+  { code: 'CRC', symbol: '₡',   name: 'Costa Rican Colón' },
+  { code: 'CUP', symbol: 'CU$', name: 'Cuban Peso' },
+  { code: 'CVE', symbol: 'Esc', name: 'Cape Verdean Escudo' },
+  { code: 'CZK', symbol: 'Kč',  name: 'Czech Koruna' },
+  { code: 'DJF', symbol: 'Fdj', name: 'Djiboutian Franc' },
+  { code: 'DKK', symbol: 'kr',  name: 'Danish Krone' },
+  { code: 'DOP', symbol: 'RD$', name: 'Dominican Peso' },
+  { code: 'DZD', symbol: 'دج',  name: 'Algerian Dinar' },
+  { code: 'EGP', symbol: 'E£',  name: 'Egyptian Pound' },
+  { code: 'ERN', symbol: 'Nfk', name: 'Eritrean Nakfa' },
+  { code: 'ETB', symbol: 'Br',  name: 'Ethiopian Birr' },
+  { code: 'EUR', symbol: '€',   name: 'Euro' },
+  { code: 'FJD', symbol: 'FJ$', name: 'Fijian Dollar' },
+  { code: 'FKP', symbol: 'FK£', name: 'Falkland Islands Pound' },
+  { code: 'FOK', symbol: 'kr',  name: 'Faroese Króna' },
+  { code: 'GBP', symbol: '£',   name: 'British Pound' },
+  { code: 'GEL', symbol: '₾',   name: 'Georgian Lari' },
+  { code: 'GGP', symbol: '£',   name: 'Guernsey Pound' },
+  { code: 'GHS', symbol: '₵',   name: 'Ghanaian Cedi' },
+  { code: 'GIP', symbol: '£',   name: 'Gibraltar Pound' },
+  { code: 'GMD', symbol: 'D',   name: 'Gambian Dalasi' },
+  { code: 'GNF', symbol: 'FG',  name: 'Guinean Franc' },
+  { code: 'GTQ', symbol: 'Q',   name: 'Guatemalan Quetzal' },
+  { code: 'GYD', symbol: 'GY$', name: 'Guyanese Dollar' },
   { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
+  { code: 'HNL', symbol: 'L',   name: 'Honduran Lempira' },
+  { code: 'HRK', symbol: 'kn',  name: 'Croatian Kuna' },
+  { code: 'HTG', symbol: 'G',   name: 'Haitian Gourde' },
+  { code: 'HUF', symbol: 'Ft',  name: 'Hungarian Forint' },
+  { code: 'IDR', symbol: 'Rp',  name: 'Indonesian Rupiah' },
+  { code: 'ILS', symbol: '₪',   name: 'Israeli Shekel' },
+  { code: 'IMP', symbol: '£',   name: 'Isle of Man Pound' },
+  { code: 'INR', symbol: '₹',   name: 'Indian Rupee' },
+  { code: 'IQD', symbol: 'ع.د', name: 'Iraqi Dinar' },
+  { code: 'IRR', symbol: '﷼',   name: 'Iranian Rial' },
+  { code: 'ISK', symbol: 'kr',  name: 'Icelandic Króna' },
+  { code: 'JEP', symbol: '£',   name: 'Jersey Pound' },
+  { code: 'JMD', symbol: 'J$',  name: 'Jamaican Dollar' },
+  { code: 'JOD', symbol: 'JD',  name: 'Jordanian Dinar' },
+  { code: 'JPY', symbol: '¥',   name: 'Japanese Yen' },
+  { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
+  { code: 'KGS', symbol: 'с',   name: 'Kyrgystani Som' },
+  { code: 'KHR', symbol: '៛',   name: 'Cambodian Riel' },
+  { code: 'KID', symbol: '$',   name: 'Kiribati Dollar' },
+  { code: 'KMF', symbol: 'CF',  name: 'Comorian Franc' },
+  { code: 'KRW', symbol: '₩',   name: 'South Korean Won' },
+  { code: 'KWD', symbol: 'KD',  name: 'Kuwaiti Dinar' },
+  { code: 'KYD', symbol: 'CI$', name: 'Cayman Islands Dollar' },
+  { code: 'KZT', symbol: '₸',   name: 'Kazakhstani Tenge' },
+  { code: 'LAK', symbol: '₭',   name: 'Laotian Kip' },
+  { code: 'LBP', symbol: 'L£',  name: 'Lebanese Pound' },
+  { code: 'LKR', symbol: 'Rs',  name: 'Sri Lankan Rupee' },
+  { code: 'LRD', symbol: 'L$',  name: 'Liberian Dollar' },
+  { code: 'LSL', symbol: 'L',   name: 'Lesotho Loti' },
+  { code: 'LYD', symbol: 'LD',  name: 'Libyan Dinar' },
+  { code: 'MAD', symbol: 'DH',  name: 'Moroccan Dirham' },
+  { code: 'MDL', symbol: 'L',   name: 'Moldovan Leu' },
+  { code: 'MGA', symbol: 'Ar',  name: 'Malagasy Ariary' },
+  { code: 'MKD', symbol: 'ден', name: 'Macedonian Denar' },
+  { code: 'MMK', symbol: 'K',   name: 'Myanmar Kyat' },
+  { code: 'MNT', symbol: '₮',   name: 'Mongolian Tugrik' },
+  { code: 'MOP', symbol: 'MOP$', name: 'Macanese Pataca' },
+  { code: 'MRU', symbol: 'UM',  name: 'Mauritanian Ouguiya' },
+  { code: 'MUR', symbol: 'Rs',  name: 'Mauritian Rupee' },
+  { code: 'MVR', symbol: 'Rf',  name: 'Maldivian Rufiyaa' },
+  { code: 'MWK', symbol: 'MK',  name: 'Malawian Kwacha' },
+  { code: 'MXN', symbol: 'Mex$', name: 'Mexican Peso' },
+  { code: 'MYR', symbol: 'RM',  name: 'Malaysian Ringgit' },
+  { code: 'MZN', symbol: 'MT',  name: 'Mozambican Metical' },
+  { code: 'NAD', symbol: 'N$',  name: 'Namibian Dollar' },
+  { code: 'NGN', symbol: '₦',   name: 'Nigerian Naira' },
+  { code: 'NIO', symbol: 'C$',  name: 'Nicaraguan Córdoba' },
+  { code: 'NOK', symbol: 'kr',  name: 'Norwegian Krone' },
+  { code: 'NPR', symbol: 'Rs',  name: 'Nepalese Rupee' },
   { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
-  { code: 'THB', symbol: '฿', name: 'Thai Baht' },
-  { code: 'ARS', symbol: '$', name: 'Argentine Peso' },
-  { code: 'PYG', symbol: '₲', name: 'Paraguayan Guarani' },
-  { code: 'RUB', symbol: '₽', name: 'Russian Ruble' },
-  { code: 'HUF', symbol: 'Ft', name: 'Hungarian Forint' },
-  { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
-  { code: 'ILS', symbol: '₪', name: 'Israeli Shekel' },
-  { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' },
-  { code: 'UAH', symbol: '₴', name: 'Ukrainian Hryvnia' },
+  { code: 'OMR', symbol: 'OMR', name: 'Omani Rial' },
+  { code: 'PAB', symbol: 'B/.', name: 'Panamanian Balboa' },
+  { code: 'PEN', symbol: 'S/',  name: 'Peruvian Sol' },
+  { code: 'PGK', symbol: 'K',   name: 'Papua New Guinean Kina' },
+  { code: 'PHP', symbol: '₱',   name: 'Philippine Peso' },
+  { code: 'PKR', symbol: '₨',   name: 'Pakistani Rupee' },
+  { code: 'PLN', symbol: 'zł',  name: 'Polish Zloty' },
+  { code: 'PYG', symbol: '₲',   name: 'Paraguayan Guarani' },
+  { code: 'QAR', symbol: 'QR',  name: 'Qatari Rial' },
+  { code: 'RON', symbol: 'lei', name: 'Romanian Leu' },
+  { code: 'RSD', symbol: 'дин', name: 'Serbian Dinar' },
+  { code: 'RUB', symbol: '₽',   name: 'Russian Ruble' },
+  { code: 'RWF', symbol: 'FRw', name: 'Rwandan Franc' },
+  { code: 'SAR', symbol: 'SR',  name: 'Saudi Riyal' },
+  { code: 'SBD', symbol: 'SI$', name: 'Solomon Islands Dollar' },
+  { code: 'SCR', symbol: 'SR',  name: 'Seychellois Rupee' },
+  { code: 'SDG', symbol: 'SDG', name: 'Sudanese Pound' },
+  { code: 'SEK', symbol: 'kr',  name: 'Swedish Krona' },
+  { code: 'SGD', symbol: 'S$',  name: 'Singapore Dollar' },
+  { code: 'SHP', symbol: '£',   name: 'Saint Helena Pound' },
+  { code: 'SLE', symbol: 'Le',  name: 'Sierra Leonean Leone' },
+  { code: 'SOS', symbol: 'Sh',  name: 'Somali Shilling' },
+  { code: 'SRD', symbol: 'SR$', name: 'Surinamese Dollar' },
+  { code: 'SSP', symbol: 'SS£', name: 'South Sudanese Pound' },
+  { code: 'STN', symbol: 'Db',  name: 'São Tomé & Príncipe Dobra' },
+  { code: 'SYP', symbol: 'S£',  name: 'Syrian Pound' },
+  { code: 'SZL', symbol: 'E',   name: 'Swazi Lilangeni' },
+  { code: 'THB', symbol: '฿',   name: 'Thai Baht' },
+  { code: 'TJS', symbol: 'SM',  name: 'Tajikistani Somoni' },
+  { code: 'TMT', symbol: 'm',   name: 'Turkmenistani Manat' },
+  { code: 'TND', symbol: 'DT',  name: 'Tunisian Dinar' },
+  { code: 'TOP', symbol: 'T$',  name: 'Tongan Paʻanga' },
+  { code: 'TRY', symbol: '₺',   name: 'Turkish Lira' },
+  { code: 'TTD', symbol: 'TT$', name: 'Trinidad & Tobago Dollar' },
+  { code: 'TVD', symbol: '$',   name: 'Tuvaluan Dollar' },
+  { code: 'TWD', symbol: 'NT$', name: 'New Taiwan Dollar' },
+  { code: 'TZS', symbol: 'TSh', name: 'Tanzanian Shilling' },
+  { code: 'UAH', symbol: '₴',   name: 'Ukrainian Hryvnia' },
+  { code: 'UGX', symbol: 'USh', name: 'Ugandan Shilling' },
+  { code: 'USD', symbol: '$',   name: 'US Dollar' },
+  { code: 'UYU', symbol: 'UY$', name: 'Uruguayan Peso' },
+  { code: 'UZS', symbol: 'soʻm', name: 'Uzbekistani Som' },
+  { code: 'VES', symbol: 'Bs',  name: 'Venezuelan Bolívar Soberano' },
+  { code: 'VND', symbol: '₫',   name: 'Vietnamese Dong' },
+  { code: 'VUV', symbol: 'VT',  name: 'Vanuatu Vatu' },
+  { code: 'WST', symbol: 'WS$', name: 'Samoan Tālā' },
+  { code: 'XAF', symbol: 'FCFA', name: 'Central African CFA Franc' },
+  { code: 'XCD', symbol: 'EC$', name: 'East Caribbean Dollar' },
+  { code: 'XCG', symbol: 'Cg',  name: 'Caribbean Guilder' },
+  { code: 'XDR', symbol: 'SDR', name: 'IMF Special Drawing Rights' },
+  { code: 'XOF', symbol: 'CFA', name: 'West African CFA Franc' },
+  { code: 'XPF', symbol: '₣',   name: 'CFP Franc' },
+  { code: 'YER', symbol: '﷼',   name: 'Yemeni Rial' },
+  { code: 'ZAR', symbol: 'R',   name: 'South African Rand' },
+  { code: 'ZMW', symbol: 'ZK',  name: 'Zambian Kwacha' },
+  { code: 'ZWL', symbol: 'Z$',  name: 'Zimbabwean Dollar' },
 ];
 
 function Converter({ mode }) {
@@ -77,6 +212,7 @@ function Converter({ mode }) {
   const [unit, setUnit] = useState('BTC');
   const [additionalCurrencies, setAdditionalCurrencies] = useState([]);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [pickerFilter, setPickerFilter] = useState('');
 
   // ─── Crypto mode state ─────────────────────
   const [sourceCrypto, setSourceCrypto] = useState('bitcoin');
@@ -257,6 +393,7 @@ function Converter({ mode }) {
     if (additionalCurrencies.find(c => c.code === currency.code)) return;
     setAdditionalCurrencies(prev => [...prev, { ...currency, rate: 0, amount: '' }]);
     setShowCurrencyPicker(false);
+    setPickerFilter('');
 
     // Populate the newly added currency's rate immediately using the already
     // computed USD amount. Going back through performBtcConversion would
@@ -537,28 +674,58 @@ function Converter({ mode }) {
       )}
 
       <div className="add-currency-section">
-        <button className="add-currency-btn" onClick={() => setShowCurrencyPicker(!showCurrencyPicker)} type="button">
+        <button
+          className="add-currency-btn"
+          onClick={() => {
+            setShowCurrencyPicker(!showCurrencyPicker);
+            setPickerFilter('');
+          }}
+          type="button"
+        >
           + Add Currency
         </button>
       </div>
 
-      {showCurrencyPicker && (
-        <div className="currency-picker">
-          <h3>Select Currency</h3>
-          <div className="currency-list">
-            {availableCurrenciesForPicker
-              .filter(curr => !additionalCurrencies.find(c => c.code === curr.code))
-              .map((currency) => (
-                <button key={currency.code} className="currency-option" onClick={() => addCurrency(currency)} type="button">
-                  <span className="currency-symbol">{currency.symbol}</span>
-                  <span className="currency-info">
-                    <strong>{currency.code}</strong> - {currency.name}
-                  </span>
-                </button>
-              ))}
+      {showCurrencyPicker && (() => {
+        // Filter by code (prefix), then by name (substring), both case-insensitive.
+        const q = pickerFilter.trim().toLowerCase();
+        const candidates = availableCurrenciesForPicker
+          .filter(curr => !additionalCurrencies.find(c => c.code === curr.code));
+        const filtered = q
+          ? candidates.filter(c =>
+              c.code.toLowerCase().includes(q) ||
+              c.name.toLowerCase().includes(q)
+            )
+          : candidates;
+        return (
+          <div className="currency-picker">
+            <h3>Select Currency</h3>
+            <input
+              type="text"
+              className="currency-picker-search"
+              placeholder="Search by code or name (e.g. ars, peso, euro)"
+              value={pickerFilter}
+              onChange={(e) => setPickerFilter(e.target.value)}
+              autoFocus
+              aria-label="Filter currency list"
+            />
+            <div className="currency-list">
+              {filtered.length === 0 ? (
+                <div className="currency-list-empty">No currencies match "{pickerFilter}"</div>
+              ) : (
+                filtered.map((currency) => (
+                  <button key={currency.code} className="currency-option" onClick={() => addCurrency(currency)} type="button">
+                    <span className="currency-symbol">{currency.symbol}</span>
+                    <span className="currency-info">
+                      <strong>{currency.code}</strong> - {currency.name}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {loading && <div className="loading">Converting...</div>}
     </div>
