@@ -1,9 +1,14 @@
-import requests
+import logging
 import os
 import time
-from apscheduler.schedulers.background import BackgroundScheduler
-from models import BTCPrice, CryptoPrice, PriceAlert, SessionLocal, SUPPORTED_CRYPTOS
 from datetime import datetime, timezone
+
+import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from models import BTCPrice, CryptoPrice, PriceAlert, SessionLocal, SUPPORTED_CRYPTOS
+
+logger = logging.getLogger(__name__)
 
 COINGECKO_API = os.getenv('COINGECKO_API_URL',
                           'https://api.coingecko.com/api/v3/simple/price')
@@ -58,7 +63,7 @@ def fetch_and_store_prices():
                 db.commit()
 
                 symbols = [SUPPORTED_CRYPTOS[c]['symbol'] for c in SUPPORTED_CRYPTOS if c in data]
-                print(f"Prices updated for: {', '.join(symbols)}")
+                logger.info("Prices updated for: %s", ', '.join(symbols))
 
                 # Check price alerts
                 check_price_alerts(data)
@@ -73,10 +78,14 @@ def fetch_and_store_prices():
                     db.close()
 
         except Exception as e:
-            print(f"Error fetching prices (attempt {attempt + 1}/{max_retries}): {e}")
+            logger.warning(
+                "Error fetching prices (attempt %s/%s): %s",
+                attempt + 1, max_retries, e,
+            )
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
             else:
+                logger.error("Giving up on price fetch after %s attempts", max_retries)
                 return False
 
     return False
@@ -123,11 +132,11 @@ def check_price_alerts(price_data):
 
         if triggered_count > 0:
             db.commit()
-            print(f"  Triggered {triggered_count} price alert(s)")
+            logger.info("Triggered %s price alert(s)", triggered_count)
     except Exception as e:
         if db:
             db.rollback()
-        print(f"  Error checking price alerts: {e}")
+        logger.exception("Error checking price alerts: %s", e)
     finally:
         if db:
             db.close()
@@ -140,11 +149,10 @@ def start_scheduler():
         interval = int(os.getenv('PRICE_UPDATE_INTERVAL', 300))
 
         try:
-            print("Fetching initial crypto prices...")
+            logger.info("Fetching initial crypto prices...")
             fetch_and_store_prices()
-        except Exception as e:
-            print(f"Initial price fetch failed: {e}")
-            print("   Will retry in scheduled interval")
+        except Exception:
+            logger.exception("Initial price fetch failed; will retry on schedule")
 
         scheduler.add_job(
             fetch_and_store_prices,
@@ -154,8 +162,8 @@ def start_scheduler():
         )
 
         scheduler.start()
-        print(f"Price scheduler started (updates every {interval} seconds)")
+        logger.info("Price scheduler started (updates every %s seconds)", interval)
         return scheduler
-    except Exception as e:
-        print(f"Failed to start scheduler: {e}")
+    except Exception:
+        logger.exception("Failed to start scheduler")
         raise

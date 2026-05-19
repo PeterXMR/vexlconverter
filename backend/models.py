@@ -111,6 +111,15 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
 
+def init_schema():
+    """Create tables if they don't exist. Idempotent; safe to call repeatedly.
+
+    Production deploys (Render + Neon) don't run database/init.sql, so the
+    app must bootstrap its own schema on startup.
+    """
+    Base.metadata.create_all(engine)
+
+
 @contextmanager
 def get_db():
     db = SessionLocal()
@@ -129,4 +138,5 @@ __all__ = [
     'SessionLocal',
     'engine',
     'get_db',
+    'init_schema',
 ]

@@ -12,7 +12,7 @@ from flask_swagger_ui import get_swaggerui_blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db
+from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db, init_schema
 from scheduler import start_scheduler
 
 load_dotenv()
@@ -50,6 +50,14 @@ def swagger_json():
     import json
     with open('swagger.json', 'r') as f:
         return jsonify(json.load(f))
+
+# Bootstrap DB schema on first run. Managed Postgres (Neon) doesn't run
+# database/init.sql, so we create tables idempotently here.
+try:
+    init_schema()
+    logger.info("DB schema ensured (create_all)")
+except Exception:
+    logger.exception("init_schema failed; API endpoints that hit the DB will return 500")
 
 # Start price update scheduler (gunicorn --preload ensures master-only).
 # RUN_SCHEDULER=false lets tests skip the background job.
