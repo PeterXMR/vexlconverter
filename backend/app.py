@@ -1,6 +1,9 @@
 import bisect
+import hashlib
+import hmac
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -8,9 +11,12 @@ import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_swagger_ui import get_swaggerui_blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db, init_schema
 from scheduler import start_scheduler
@@ -25,10 +31,51 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Render is a reverse proxy. Trust X-Forwarded-For (one hop) so the rate
+# limiter sees the real client IP, not the platform's edge address.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
 # CORS: comma-separated list of allowed origins; default is local dev frontend.
 _cors_origins_env = os.getenv('CORS_ORIGINS', 'http://localhost:3000')
 CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
-CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
+CORS(
+    app,
+    origins=CORS_ORIGINS,
+    supports_credentials=False,
+    allow_headers=['Content-Type', 'X-Alert-Token', 'X-Alert-Tokens'],
+)
+
+# Rate limiter — in-memory bucket (per-worker). IPs live in volatile memory
+# only; we never log them (gunicorn access log is off), so this doesn't
+# conflict with the no-IP-retention privacy stance.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["60 per minute"],
+    storage_uri="memory://",
+    headers_enabled=True,
+)
+
+
+# ─── Token helpers (per-alert ownership) ─────────────
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+
+def _verify_token(provided, stored_hash):
+    if not provided or not stored_hash:
+        return False
+    return hmac.compare_digest(_hash_token(provided), stored_hash)
+
+
+def _tokens_from_header():
+    """Return a list of SHA-256 hashes parsed from the X-Alert-Tokens header
+    (comma-separated plaintext tokens). Empty list if header missing/blank."""
+    header = request.headers.get('X-Alert-Tokens', '')
+    if not header:
+        return []
+    return [_hash_token(t.strip()) for t in header.split(',') if t.strip()]
 
 
 @app.after_request
@@ -367,8 +414,14 @@ def convert_fiat_to_crypto():
 # ─── Price Alerts ────────────────────────────────────
 
 @app.route('/api/alerts', methods=['POST'])
+@limiter.limit("10 per minute")
 def create_alert():
-    """Create a new price alert. Triggers immediately if condition already met."""
+    """Create a new price alert. Triggers immediately if condition already met.
+
+    Returns a one-time `edit_token` in the response. The client must store
+    this token (e.g. localStorage) — it's required to delete/ack the alert
+    and to list it via GET. The server stores only the SHA-256 hash.
+    """
     try:
         data = request.get_json()
         if not data:
@@ -387,6 +440,9 @@ def create_alert():
             return jsonify({'success': False, 'error': 'currency must be usd or eur'}), 400
         if direction not in ('above', 'below'):
             return jsonify({'success': False, 'error': 'direction must be above or below'}), 400
+
+        edit_token = secrets.token_urlsafe(32)
+        edit_token_hash = _hash_token(edit_token)
 
         with get_db() as db:
             # Check current price to see if alert should trigger immediately
@@ -413,11 +469,15 @@ def create_alert():
                 direction=direction,
                 is_triggered=already_triggered,
                 triggered_at=datetime.now(timezone.utc) if already_triggered else None,
+                edit_token_hash=edit_token_hash,
             )
             db.add(alert)
             db.commit()
             result = alert.to_dict()
 
+        # Return the plaintext token exactly once. The server keeps only the
+        # hash, so it can't recover the token later.
+        result['edit_token'] = edit_token
         return jsonify({'success': True, 'data': result}), 201
     except Exception:
         logger.exception("Failed to create alert")
@@ -426,7 +486,15 @@ def create_alert():
 
 @app.route('/api/alerts', methods=['GET'])
 def get_alerts():
-    """List all active (non-triggered) alerts."""
+    """List active (non-triggered) alerts owned by the caller.
+
+    Filters by SHA-256 hashes of plaintext tokens supplied via the
+    `X-Alert-Tokens` header (comma-separated). No header => empty list,
+    so anonymous callers can't enumerate other users' alerts.
+    """
+    token_hashes = _tokens_from_header()
+    if not token_hashes:
+        return jsonify({'success': True, 'data': []})
     try:
         with get_db() as db:
             alerts = db.query(
@@ -439,7 +507,8 @@ def get_alerts():
                 PriceAlert.created_at,
                 PriceAlert.triggered_at,
             ).filter(
-                PriceAlert.is_triggered.is_(False)
+                PriceAlert.is_triggered.is_(False),
+                PriceAlert.edit_token_hash.in_(token_hashes),
             ).order_by(PriceAlert.created_at.desc()).all()
 
         data = [{
@@ -461,14 +530,20 @@ def get_alerts():
 
 @app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
 def delete_alert(alert_id):
-    """Delete a price alert."""
+    """Delete a price alert. Requires the `X-Alert-Token` header to match
+    the alert's stored hash."""
+    token = request.headers.get('X-Alert-Token', '')
+    if not token:
+        return jsonify({'success': False, 'error': 'X-Alert-Token header required'}), 401
     try:
         with get_db() as db:
-            deleted = db.query(PriceAlert).filter(PriceAlert.id == alert_id).delete()
+            alert = db.query(PriceAlert).filter(PriceAlert.id == alert_id).first()
+            if not alert:
+                return jsonify({'success': False, 'error': 'Alert not found'}), 404
+            if not _verify_token(token, alert.edit_token_hash):
+                return jsonify({'success': False, 'error': 'Invalid token'}), 403
+            db.delete(alert)
             db.commit()
-
-        if not deleted:
-            return jsonify({'success': False, 'error': 'Alert not found'}), 404
 
         return jsonify({'success': True})
     except Exception:
@@ -478,9 +553,11 @@ def delete_alert(alert_id):
 
 @app.route('/api/alerts/triggered', methods=['GET'])
 def get_triggered_alerts():
-    """Get triggered alerts not yet seen by the client.
-    Uses seen_by_client flag instead of a time window, so alerts
-    persist until the frontend acknowledges them."""
+    """Get triggered alerts owned by the caller that haven't been
+    acknowledged yet. Same X-Alert-Tokens filtering as GET /api/alerts."""
+    token_hashes = _tokens_from_header()
+    if not token_hashes:
+        return jsonify({'success': True, 'data': []})
     try:
         with get_db() as db:
             alerts = db.query(
@@ -492,7 +569,8 @@ def get_triggered_alerts():
                 PriceAlert.triggered_at,
             ).filter(
                 PriceAlert.is_triggered.is_(True),
-                PriceAlert.seen_by_client.is_(False)
+                PriceAlert.seen_by_client.is_(False),
+                PriceAlert.edit_token_hash.in_(token_hashes),
             ).all()
 
         data = [{
@@ -513,26 +591,45 @@ def get_triggered_alerts():
 @app.route('/api/alerts/ack', methods=['POST'])
 def acknowledge_alerts():
     """Mark triggered alerts as seen by the client.
-    Request body: {"ids": [1, 2, 3]}"""
+
+    Request body: {"acks": [{"id": 1, "token": "..."}, ...]}
+    Each id is acked only if the accompanying token matches the alert's
+    stored hash. Items with missing/invalid tokens are silently skipped.
+    """
     try:
         data = request.get_json()
-        if not data or 'ids' not in data:
-            return jsonify({'success': False, 'error': 'ids array required'}), 400
+        if not data or 'acks' not in data:
+            return jsonify({'success': False, 'error': 'acks array required'}), 400
 
-        alert_ids = data['ids']
-        if not isinstance(alert_ids, list) or len(alert_ids) == 0:
-            return jsonify({'success': False, 'error': 'ids must be a non-empty array'}), 400
+        acks = data['acks']
+        if not isinstance(acks, list) or len(acks) == 0:
+            return jsonify({'success': False, 'error': 'acks must be a non-empty array'}), 400
 
+        ack_ids = []
         with get_db() as db:
-            updated = db.query(PriceAlert).filter(
-                PriceAlert.id.in_(alert_ids),
-                PriceAlert.is_triggered.is_(True)
-            ).update({
-                PriceAlert.seen_by_client: True
-            }, synchronize_session=False)
-            db.commit()
+            for ack in acks:
+                if not isinstance(ack, dict):
+                    continue
+                alert_id = ack.get('id')
+                token = ack.get('token')
+                if not alert_id or not token:
+                    continue
+                alert = db.query(PriceAlert).filter(
+                    PriceAlert.id == alert_id,
+                    PriceAlert.is_triggered.is_(True),
+                ).first()
+                if alert and _verify_token(token, alert.edit_token_hash):
+                    ack_ids.append(alert_id)
 
-        return jsonify({'success': True, 'acknowledged': updated})
+            if ack_ids:
+                db.query(PriceAlert).filter(
+                    PriceAlert.id.in_(ack_ids)
+                ).update({
+                    PriceAlert.seen_by_client: True
+                }, synchronize_session=False)
+                db.commit()
+
+        return jsonify({'success': True, 'acknowledged': len(ack_ids)})
     except Exception:
         logger.exception("Failed to acknowledge alerts")
         return jsonify({'error': 'internal server error'}), 500

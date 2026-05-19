@@ -4,6 +4,42 @@ import './AlertManager.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
+// Per-alert edit tokens (returned once by POST /alerts) live in
+// localStorage keyed by alert id. They prove ownership to the API for
+// listing, deleting, and acknowledging.
+const TOKENS_KEY = 'vexl_alert_tokens';
+
+const loadTokens = () => {
+  try {
+    return JSON.parse(localStorage.getItem(TOKENS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const saveTokens = (tokens) => {
+  try {
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+  } catch {
+    // localStorage quota / disabled — degrade gracefully
+  }
+};
+
+const storeToken = (id, token) => {
+  const t = loadTokens();
+  t[String(id)] = token;
+  saveTokens(t);
+};
+
+const dropToken = (id) => {
+  const t = loadTokens();
+  delete t[String(id)];
+  saveTokens(t);
+};
+
+const allTokensHeader = () => Object.values(loadTokens()).join(',');
+const tokenFor = (id) => loadTokens()[String(id)] || '';
+
 function AlertManager() {
   const [alerts, setAlerts] = useState([]);
   const [cryptos, setCryptos] = useState([]);
@@ -28,8 +64,15 @@ function AlertManager() {
   };
 
   const fetchAlerts = useCallback(async () => {
+    const tokens = allTokensHeader();
+    if (!tokens) {
+      setAlerts([]);
+      return;
+    }
     try {
-      const response = await axios.get(`${API_URL}/alerts`);
+      const response = await axios.get(`${API_URL}/alerts`, {
+        headers: { 'X-Alert-Tokens': tokens },
+      });
       if (response.data.success) {
         setAlerts(response.data.data);
       }
@@ -39,8 +82,12 @@ function AlertManager() {
   }, []);
 
   const checkTriggered = useCallback(async () => {
+    const tokens = allTokensHeader();
+    if (!tokens) return;
     try {
-      const response = await axios.get(`${API_URL}/alerts/triggered`);
+      const response = await axios.get(`${API_URL}/alerts/triggered`, {
+        headers: { 'X-Alert-Tokens': tokens },
+      });
       if (response.data.success && response.data.data.length > 0) {
         const newTriggers = response.data.data.filter(
           (a) => !seenTriggeredIds.current.has(a.id)
@@ -48,11 +95,12 @@ function AlertManager() {
 
         if (newTriggers.length === 0) return;
 
-        const ackIds = [];
+        const acks = [];
 
         newTriggers.forEach((alert) => {
           seenTriggeredIds.current.add(alert.id);
-          ackIds.push(alert.id);
+          const tok = tokenFor(alert.id);
+          if (tok) acks.push({ id: alert.id, token: tok });
 
           const currSymbol = alert.currency === 'usd' ? '$' : '\u20AC';
           const cryptoName = alert.crypto.charAt(0).toUpperCase() + alert.crypto.slice(1);
@@ -69,9 +117,9 @@ function AlertManager() {
         });
 
         // Acknowledge seen alerts so they don't appear again
-        if (ackIds.length > 0) {
+        if (acks.length > 0) {
           try {
-            await axios.post(`${API_URL}/alerts/ack`, { ids: ackIds });
+            await axios.post(`${API_URL}/alerts/ack`, { acks });
           } catch (err) {
             console.error('Failed to ack alerts:', err);
           }
@@ -113,6 +161,12 @@ function AlertManager() {
         const alertData = response.data.data;
         setTargetPrice('');
 
+        // Persist the per-alert edit token returned exactly once on create.
+        // Without it we can't list, delete, or ack this alert later.
+        if (alertData.edit_token) {
+          storeToken(alertData.id, alertData.edit_token);
+        }
+
         // If the alert was immediately triggered, show notification right away
         if (alertData.is_triggered) {
           const currSymbol = currency === 'usd' ? '$' : '\u20AC';
@@ -132,7 +186,9 @@ function AlertManager() {
 
           // Acknowledge it immediately
           try {
-            await axios.post(`${API_URL}/alerts/ack`, { ids: [alertData.id] });
+            await axios.post(`${API_URL}/alerts/ack`, {
+              acks: [{ id: alertData.id, token: alertData.edit_token }],
+            });
           } catch (err) {
             console.error('Failed to ack alert:', err);
           }
@@ -146,9 +202,17 @@ function AlertManager() {
   };
 
   const handleDelete = async (alertId) => {
+    const token = tokenFor(alertId);
+    if (!token) {
+      console.error('No token for alert', alertId, '— cannot delete');
+      return;
+    }
     try {
-      const response = await axios.delete(`${API_URL}/alerts/${alertId}`);
+      const response = await axios.delete(`${API_URL}/alerts/${alertId}`, {
+        headers: { 'X-Alert-Token': token },
+      });
       if (response.data.success) {
+        dropToken(alertId);
         setAlerts((prev) => prev.filter((a) => a.id !== alertId));
       }
     } catch (err) {

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, Numeric, DateTime, String, Boolean
+from sqlalchemy import create_engine, Column, Integer, Numeric, DateTime, String, Boolean, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -82,6 +82,12 @@ class PriceAlert(Base):
     seen_by_client = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     triggered_at = Column(DateTime, nullable=True)
+    # SHA-256 hash of the per-alert edit token returned once on creation.
+    # Only the holder of the plaintext token can delete/ack this alert.
+    # Nullable so the column can be added to an existing table; legacy rows
+    # with NULL hash become un-editable via the API (deliberate — safer
+    # than leaving them mutable by anyone).
+    edit_token_hash = Column(String(64), nullable=True)
 
     def to_dict(self):
         return {
@@ -115,9 +121,21 @@ def init_schema():
     """Create tables if they don't exist. Idempotent; safe to call repeatedly.
 
     Production deploys (Render + Neon) don't run database/init.sql, so the
-    app must bootstrap its own schema on startup.
+    app must bootstrap its own schema on startup. Also handles a lightweight
+    column-add migration for `edit_token_hash` on existing deploys (create_all
+    does not alter existing tables).
     """
     Base.metadata.create_all(engine)
+
+    insp = inspect(engine)
+    if insp.has_table('price_alerts'):
+        cols = {c['name'] for c in insp.get_columns('price_alerts')}
+        if 'edit_token_hash' not in cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    'ALTER TABLE price_alerts '
+                    'ADD COLUMN IF NOT EXISTS edit_token_hash VARCHAR(64)'
+                ))
 
 
 @contextmanager
