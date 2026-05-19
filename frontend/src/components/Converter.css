@@ -38,6 +38,9 @@
   margin-bottom: var(--s-3);
   display: flex;
   flex-direction: column;
+  /* Allow inputs/selects to shrink below their intrinsic min-content size
+   * so a 1fr grid track actually behaves like 1fr. */
+  min-width: 0;
 }
 
 .input-section:last-child,
@@ -51,6 +54,15 @@
   align-items: center;
   gap: var(--s-2);
   margin-bottom: var(--s-1);
+  /* When the label + dropdown together exceed the container width, wrap the
+   * dropdown to the next line rather than overflowing horizontally. */
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.input-header > label {
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 label {
@@ -162,7 +174,7 @@ button.arrow:focus-visible {
 /* ── Convert-row grid: From | arrow | To (crypto / fiat / universal) ── */
 .convert-row {
   display: grid;
-  grid-template-columns: 1fr 32px 1fr;
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
   gap: var(--s-2);
   align-items: end;
 }
@@ -173,7 +185,16 @@ button.arrow:focus-visible {
   margin-bottom: 6px;
 }
 
-@media (max-width: 540px) {
+/* Stack From / arrow / To vertically once the pane gets too narrow to keep
+ * both inputs comfortably wide. Container queries scope this to the pane
+ * itself rather than the viewport, so it works whether the workspace is
+ * one- or two-column. */
+.converter {
+  container-type: inline-size;
+  container-name: converter;
+}
+
+@container converter (max-width: 480px) {
   .convert-row {
     grid-template-columns: 1fr;
   }
@@ -183,10 +204,25 @@ button.arrow:focus-visible {
   }
 }
 
-/* ── BTC-mode dual output (USD + EUR) ── */
+/* Viewport fallback for browsers without container queries (Safari < 16). */
+@supports not (container-type: inline-size) {
+  @media (max-width: 540px) {
+    .convert-row {
+      grid-template-columns: 1fr;
+    }
+    .convert-row > button.arrow,
+    .convert-row > .arrow {
+      margin: var(--s-1) 0;
+    }
+  }
+}
+
+/* ── BTC-mode dual output (USD + EUR) ──
+ * auto-fit + minmax means the two output fields drop to a single column once
+ * the pane can't keep both at ≥220px without crushing them. */
 .output-section {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--s-3);
 }
 
@@ -232,6 +268,12 @@ button.arrow:focus-visible {
   font-family: var(--font-ui);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  /* Allow selects to shrink inside flex/grid parents and clamp their
+   * resting width so long option labels (e.g. "USD - US DOLLAR") don't
+   * blow out the input-header. */
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 .crypto-dropdown:focus,
@@ -251,6 +293,13 @@ button.arrow:focus-visible {
   display: flex;
   gap: var(--s-1);
   align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.type-and-select > .crypto-dropdown {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .type-dropdown {
@@ -415,12 +464,17 @@ input[type="number"] {
   border-radius: var(--r-sm);
 }
 
-/* ── Footer ── */
-.footer {
+/* ── Footer ──
+ * Uses a unique class name (.converter-footer) to avoid colliding with the
+ * outer .footer in App.css, which would otherwise apply chunkier padding
+ * and centre alignment to this inner footer. */
+.converter-footer {
   margin-top: var(--s-3);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   color: var(--text-mute);
@@ -428,7 +482,7 @@ input[type="number"] {
   border-top: 1px solid var(--border-dim);
 }
 
-.footer-version,
-.footer-update {
+.converter-footer-version,
+.converter-footer-update {
   margin: 0;
 }

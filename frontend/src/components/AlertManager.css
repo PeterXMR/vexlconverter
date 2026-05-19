@@ -43,7 +43,10 @@
 
 .alert-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) auto;
+  /* auto-fit + minmax(0, …) ensures form fields can shrink past their
+   * intrinsic content width — necessary because <select> reports a wide
+   * min-content based on the longest option text. */
+  grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
   gap: var(--s-2);
   align-items: end;
   padding-bottom: var(--s-3);
@@ -80,6 +83,9 @@
   border-radius: var(--r-sm);
   color: var(--text);
   transition: border-color 120ms ease;
+  /* Permit the field to shrink inside its grid track. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .alert-form-group select {

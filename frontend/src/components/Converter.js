@@ -872,10 +872,10 @@ function Converter({ mode }) {
       {mode === 'fiat' && renderFiatMode()}
       {mode === 'both' && renderBothMode()}
 
-      <div className="footer">
-        <p className="footer-version">v0.2.0</p>
+      <div className="converter-footer">
+        <p className="converter-footer-version">v0.2.0</p>
         {lastUpdate && (
-          <p className="footer-update">
+          <p className="converter-footer-update">
             Last updated: {lastUpdate.toLocaleTimeString()}
           </p>
         )}
