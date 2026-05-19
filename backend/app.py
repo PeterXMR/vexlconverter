@@ -185,6 +185,69 @@ def get_supported_cryptos():
     return jsonify({'success': True, 'data': cryptos})
 
 
+# ─── Fiat rates ──────────────────────────────────────
+
+# 10-minute in-process cache of the USD-based fiat rates so we don't hit
+# open.er-api.com per request. Lives in module memory; resets on restart.
+_FIAT_RATES_TTL = 600  # seconds
+_fiat_rates_cache = {'rates': None, 'fetched_at': 0.0}
+FIAT_RATES_PROVIDER_URL = os.getenv(
+    'FIAT_RATES_PROVIDER_URL',
+    'https://open.er-api.com/v6/latest/USD',
+)
+
+
+@app.route('/api/fiat-rates', methods=['GET'])
+@limiter.limit("30 per minute")
+def get_fiat_rates():
+    """Proxy USD-based fiat rates from the upstream provider.
+
+    Frontend calls this instead of hitting the third-party directly, so
+    visitor IPs never reach `open.er-api.com` and the call stays inside
+    our CSP `connect-src 'self' ...onrender.com`.
+    """
+    import time
+    now = time.time()
+    if (
+        _fiat_rates_cache['rates'] is not None
+        and (now - _fiat_rates_cache['fetched_at']) < _FIAT_RATES_TTL
+    ):
+        return jsonify({
+            'success': True,
+            'rates': _fiat_rates_cache['rates'],
+            'base': 'USD',
+            'cached': True,
+        })
+
+    try:
+        resp = http_requests.get(FIAT_RATES_PROVIDER_URL, timeout=10)
+        resp.raise_for_status()
+        payload = resp.json()
+        if payload.get('result') != 'success' or 'rates' not in payload:
+            raise ValueError('Unexpected provider payload')
+
+        _fiat_rates_cache['rates'] = payload['rates']
+        _fiat_rates_cache['fetched_at'] = now
+        return jsonify({
+            'success': True,
+            'rates': payload['rates'],
+            'base': 'USD',
+            'cached': False,
+        })
+    except Exception:
+        logger.exception("Fiat rates upstream failed")
+        # If we have any stale data, return it so the UI keeps working
+        if _fiat_rates_cache['rates'] is not None:
+            return jsonify({
+                'success': True,
+                'rates': _fiat_rates_cache['rates'],
+                'base': 'USD',
+                'cached': True,
+                'stale': True,
+            })
+        return jsonify({'success': False, 'error': 'fiat rates unavailable'}), 503
+
+
 # ─── Prices ──────────────────────────────────────────
 
 @app.route('/api/prices/latest', methods=['GET'])
