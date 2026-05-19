@@ -106,6 +106,15 @@ class PriceAlert(Base):
 # Database connection
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
+    # In production we fail fast — silently falling back to a hardcoded
+    # `user:user@localhost` URL would mean serving traffic against a stale
+    # local DB if the env var ever drops. In dev we keep the docker-compose
+    # default so `flask run` works out of the box.
+    if os.getenv('FLASK_ENV', 'production').lower() == 'production':
+        raise RuntimeError(
+            "DATABASE_URL must be set in production "
+            "(set FLASK_ENV=development for the local docker-compose default)"
+        )
     logger.warning(
         "DATABASE_URL not set; falling back to dev default "
         "postgresql://user:user@localhost:5432/btc_converter"
