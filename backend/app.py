@@ -30,26 +30,50 @@ _cors_origins_env = os.getenv('CORS_ORIGINS', 'http://localhost:3000')
 CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
 CORS(app, origins=CORS_ORIGINS, supports_credentials=False)
 
+
+@app.after_request
+def add_security_headers(response):
+    """Privacy/security response headers applied to every response.
+
+    Strips the gunicorn server identifier and adds standard hardening.
+    """
+    response.headers['Server'] = 'web'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Permissions-Policy'] = (
+        'geolocation=(), camera=(), microphone=(), payment=(), interest-cohort=()'
+    )
+    return response
+
+
 # Constants
 SATOSHIS_PER_BTC = 100_000_000
 MAX_AMOUNT = Decimal('1e12')
 
-# Swagger UI configuration
-SWAGGER_URL = '/api/docs'
-API_URL = '/static/swagger.json'
-
-swaggerui_blueprint = get_swaggerui_blueprint(
-    SWAGGER_URL,
-    API_URL,
-    config={'app_name': "Vexl Converter API"}
+# Swagger UI: enabled only outside production to reduce info disclosure.
+# Set ENABLE_API_DOCS=true to force-enable it on a production deploy.
+_swagger_enabled = (
+    os.getenv('ENABLE_API_DOCS', '').lower() == 'true'
+    or os.getenv('FLASK_ENV', 'production').lower() != 'production'
 )
-app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+if _swagger_enabled:
+    SWAGGER_URL = '/api/docs'
+    API_URL = '/static/swagger.json'
 
-@app.route('/static/swagger.json')
-def swagger_json():
-    import json
-    with open('swagger.json', 'r') as f:
-        return jsonify(json.load(f))
+    swaggerui_blueprint = get_swaggerui_blueprint(
+        SWAGGER_URL,
+        API_URL,
+        config={'app_name': "Vexl Converter API"}
+    )
+    app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+    @app.route('/static/swagger.json')
+    def swagger_json():
+        import json
+        with open('swagger.json', 'r') as f:
+            return jsonify(json.load(f))
 
 # Bootstrap DB schema on first run. Managed Postgres (Neon) doesn't run
 # database/init.sql, so we create tables idempotently here.
