@@ -21,8 +21,12 @@ COPY . .
 RUN chmod +x entrypoint.sh
 
 # Set environment variables
+# FLASK_ENV deliberately not baked here — production (Render) injects
+# FLASK_ENV=production via env vars; local docker-compose overrides to
+# development via its `environment:` section. Baking `development` here
+# would silently enable Swagger UI and the user:user DB fallback if a
+# prod env var was ever dropped.
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_ENV=development
 
 # Expose port
 EXPOSE 5001

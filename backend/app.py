@@ -35,6 +35,10 @@ app = Flask(__name__)
 # limiter sees the real client IP, not the platform's edge address.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
+# Reject huge bodies before they reach handler code (defense against the
+# unbounded `acks: []` / `X-Alert-Tokens` headers callable below).
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024  # 64 KB
+
 # CORS: comma-separated list of allowed origins; default is local dev frontend.
 _cors_origins_env = os.getenv('CORS_ORIGINS', 'http://localhost:3000')
 CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
@@ -53,7 +57,9 @@ limiter = Limiter(
     app=app,
     default_limits=["60 per minute"],
     storage_uri="memory://",
-    headers_enabled=True,
+    # Don't expose X-RateLimit-* on every response — leaks the per-route
+    # bucket shape and helps an attacker pace brute force at the limit.
+    headers_enabled=False,
 )
 
 
@@ -69,13 +75,21 @@ def _verify_token(provided, stored_hash):
     return hmac.compare_digest(_hash_token(provided), stored_hash)
 
 
+# Cap the number of tokens we'll process per request. Each becomes a
+# SHA-256 hash and an entry in a SQL `IN` clause; an attacker who sends
+# 100k tokens would otherwise spike CPU and choke the driver.
+_MAX_TOKENS_PER_REQUEST = 50
+
+
 def _tokens_from_header():
     """Return a list of SHA-256 hashes parsed from the X-Alert-Tokens header
-    (comma-separated plaintext tokens). Empty list if header missing/blank."""
+    (comma-separated plaintext tokens). Empty list if header missing/blank.
+    Capped at _MAX_TOKENS_PER_REQUEST entries."""
     header = request.headers.get('X-Alert-Tokens', '')
     if not header:
         return []
-    return [_hash_token(t.strip()) for t in header.split(',') if t.strip()]
+    parts = [t.strip() for t in header.split(',') if t.strip()]
+    return [_hash_token(t) for t in parts[:_MAX_TOKENS_PER_REQUEST]]
 
 
 @app.after_request
@@ -185,6 +199,69 @@ def get_supported_cryptos():
     return jsonify({'success': True, 'data': cryptos})
 
 
+# ─── Fiat rates ──────────────────────────────────────
+
+# 10-minute in-process cache of the USD-based fiat rates so we don't hit
+# open.er-api.com per request. Lives in module memory; resets on restart.
+_FIAT_RATES_TTL = 600  # seconds
+_fiat_rates_cache = {'rates': None, 'fetched_at': 0.0}
+FIAT_RATES_PROVIDER_URL = os.getenv(
+    'FIAT_RATES_PROVIDER_URL',
+    'https://open.er-api.com/v6/latest/USD',
+)
+
+
+@app.route('/api/fiat-rates', methods=['GET'])
+@limiter.limit("30 per minute")
+def get_fiat_rates():
+    """Proxy USD-based fiat rates from the upstream provider.
+
+    Frontend calls this instead of hitting the third-party directly, so
+    visitor IPs never reach `open.er-api.com` and the call stays inside
+    our CSP `connect-src 'self' ...onrender.com`.
+    """
+    import time
+    now = time.time()
+    if (
+        _fiat_rates_cache['rates'] is not None
+        and (now - _fiat_rates_cache['fetched_at']) < _FIAT_RATES_TTL
+    ):
+        return jsonify({
+            'success': True,
+            'rates': _fiat_rates_cache['rates'],
+            'base': 'USD',
+            'cached': True,
+        })
+
+    try:
+        resp = http_requests.get(FIAT_RATES_PROVIDER_URL, timeout=10)
+        resp.raise_for_status()
+        payload = resp.json()
+        if payload.get('result') != 'success' or 'rates' not in payload:
+            raise ValueError('Unexpected provider payload')
+
+        _fiat_rates_cache['rates'] = payload['rates']
+        _fiat_rates_cache['fetched_at'] = now
+        return jsonify({
+            'success': True,
+            'rates': payload['rates'],
+            'base': 'USD',
+            'cached': False,
+        })
+    except Exception:
+        logger.exception("Fiat rates upstream failed")
+        # If we have any stale data, return it so the UI keeps working
+        if _fiat_rates_cache['rates'] is not None:
+            return jsonify({
+                'success': True,
+                'rates': _fiat_rates_cache['rates'],
+                'base': 'USD',
+                'cached': True,
+                'stale': True,
+            })
+        return jsonify({'success': False, 'error': 'fiat rates unavailable'}), 503
+
+
 # ─── Prices ──────────────────────────────────────────
 
 @app.route('/api/prices/latest', methods=['GET'])
@@ -280,10 +357,15 @@ def convert_crypto():
     }
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'success': False, 'error': 'Request body required'}), 400
         crypto = data.get('crypto', 'bitcoin')
-        amount = data.get('amount') or data.get('btc_amount', 0)
-        amount = Decimal(str(amount))
+        raw_amount = data.get('amount') or data.get('btc_amount', 0)
+        try:
+            amount = Decimal(str(raw_amount))
+        except (TypeError, ValueError, ArithmeticError):
+            return jsonify({'success': False, 'error': 'amount must be a number'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
             return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
@@ -346,7 +428,7 @@ def convert_fiat_to_crypto():
     }
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Request body required'}), 400
 
@@ -357,7 +439,10 @@ def convert_fiat_to_crypto():
         if fiat_amount is None:
             return jsonify({'success': False, 'error': 'fiat_amount is required'}), 400
 
-        fiat_amount = Decimal(str(fiat_amount))
+        try:
+            fiat_amount = Decimal(str(fiat_amount))
+        except (TypeError, ValueError, ArithmeticError):
+            return jsonify({'success': False, 'error': 'fiat_amount must be a number'}), 400
         if fiat_amount <= 0:
             return jsonify({'success': False, 'error': 'fiat_amount must be greater than 0'}), 400
 
@@ -423,7 +508,7 @@ def create_alert():
     and to list it via GET. The server stores only the SHA-256 hash.
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'error': 'Request body required'}), 400
 
@@ -432,9 +517,15 @@ def create_alert():
         direction = data.get('direction', 'above').lower()
         crypto = data.get('crypto', 'bitcoin')
 
-        if target_price is None or float(target_price) <= 0:
+        if target_price is None:
+            return jsonify({'success': False, 'error': 'target_price required'}), 400
+        try:
+            target_price_dec = Decimal(str(target_price))
+        except (TypeError, ValueError, ArithmeticError):
+            return jsonify({'success': False, 'error': 'target_price must be a number'}), 400
+        if target_price_dec <= 0:
             return jsonify({'success': False, 'error': 'target_price must be positive'}), 400
-        if Decimal(str(target_price)) > MAX_AMOUNT:
+        if target_price_dec > MAX_AMOUNT:
             return jsonify({'success': False, 'error': 'target_price exceeds maximum allowed'}), 400
         if currency not in ('usd', 'eur'):
             return jsonify({'success': False, 'error': 'currency must be usd or eur'}), 400
@@ -531,20 +622,27 @@ def get_alerts():
 @app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
 def delete_alert(alert_id):
     """Delete a price alert. Requires the `X-Alert-Token` header to match
-    the alert's stored hash."""
+    the alert's stored hash.
+
+    Returns 403 for missing token, wrong token, AND non-existent alert ID —
+    a distinct 404 would let an attacker enumerate which IDs exist via
+    sequential probing.
+    """
     token = request.headers.get('X-Alert-Token', '')
+    forbidden = (jsonify({'success': False, 'error': 'forbidden'}), 403)
     if not token:
-        return jsonify({'success': False, 'error': 'X-Alert-Token header required'}), 401
+        return forbidden
     try:
         with get_db() as db:
-            alert = db.query(PriceAlert).filter(PriceAlert.id == alert_id).first()
-            if not alert:
-                return jsonify({'success': False, 'error': 'Alert not found'}), 404
-            if not _verify_token(token, alert.edit_token_hash):
-                return jsonify({'success': False, 'error': 'Invalid token'}), 403
-            db.delete(alert)
+            # Match id + token-hash in one query so non-owners and
+            # non-existent IDs share the same code path.
+            deleted = db.query(PriceAlert).filter(
+                PriceAlert.id == alert_id,
+                PriceAlert.edit_token_hash == _hash_token(token),
+            ).delete(synchronize_session=False)
             db.commit()
-
+        if not deleted:
+            return forbidden
         return jsonify({'success': True})
     except Exception:
         logger.exception("Failed to delete alert %s", alert_id)
@@ -588,22 +686,31 @@ def get_triggered_alerts():
         return jsonify({'error': 'internal server error'}), 500
 
 
+# Cap items in /api/alerts/ack so an attacker can't tie up a worker with
+# a 50k-entry payload (each entry is a SELECT + token verify).
+_MAX_ACKS_PER_REQUEST = 100
+
+
 @app.route('/api/alerts/ack', methods=['POST'])
+@limiter.limit("10 per minute")
 def acknowledge_alerts():
     """Mark triggered alerts as seen by the client.
 
     Request body: {"acks": [{"id": 1, "token": "..."}, ...]}
     Each id is acked only if the accompanying token matches the alert's
     stored hash. Items with missing/invalid tokens are silently skipped.
+    Capped at _MAX_ACKS_PER_REQUEST items per request.
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data or 'acks' not in data:
             return jsonify({'success': False, 'error': 'acks array required'}), 400
 
         acks = data['acks']
         if not isinstance(acks, list) or len(acks) == 0:
             return jsonify({'success': False, 'error': 'acks must be a non-empty array'}), 400
+        if len(acks) > _MAX_ACKS_PER_REQUEST:
+            return jsonify({'success': False, 'error': 'too many acks in one request'}), 400
 
         ack_ids = []
         with get_db() as db:
@@ -641,6 +748,7 @@ _TRUNC_WHITELIST = {'hour', 'day', 'week', 'month'}
 
 
 @app.route('/api/prices/history', methods=['GET'])
+@limiter.limit("20 per minute")
 def get_price_history():
     """Get historical price data with smart aggregation.
 
@@ -865,7 +973,9 @@ def get_price_history():
                 'count': len(db_data),
                 'data': db_data,
                 'source': 'database',
-                'warning': f'Limited data. CoinGecko fallback failed: {str(cg_err)}'
+                # Don't echo upstream exception text — may leak URLs/IPs/
+                # library internals. The detail is in our logger.exception.
+                'warning': 'Limited data; upstream price feed unavailable.'
             })
 
     except Exception:
