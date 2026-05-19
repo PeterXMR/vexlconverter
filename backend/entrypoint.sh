@@ -24,5 +24,7 @@ BIND_PORT="${PORT:-5001}"
 # --preload ensures APScheduler runs in the master only (no duplicate jobs).
 # --config gunicorn.conf.py disposes the forked engine per worker to avoid
 # shared-connection races (ResourceClosedError).
-exec gunicorn --config gunicorn.conf.py --preload --workers 2 --bind "0.0.0.0:${BIND_PORT}" --access-logfile - --error-logfile - app:app
+# Access logging is disabled to avoid retaining visitor IPs / User-Agents;
+# error log only captures crashes/tracebacks (no per-request metadata).
+exec gunicorn --config gunicorn.conf.py --preload --workers 2 --bind "0.0.0.0:${BIND_PORT}" --error-logfile - app:app
 
