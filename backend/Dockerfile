@@ -23,9 +23,6 @@ RUN chmod +x entrypoint.sh
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_ENV=development
-ENV DB_HOST=postgres
-ENV DB_USER=user
-ENV DB_NAME=btc_converter
 
 # Expose port
 EXPOSE 5001
