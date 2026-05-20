@@ -16,6 +16,7 @@ from flask_limiter.util import get_remote_address
 from flask_swagger_ui import get_swaggerui_blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db, init_schema
@@ -63,6 +64,41 @@ limiter = Limiter(
 )
 
 
+# ─── Body / type guards ──────────────────────────────
+
+def _require_json_object(data):
+    """Validate that `data` (result of request.get_json(silent=True)) is a
+    JSON object. Returns the dict on success or a Flask response tuple to
+    return immediately on failure.
+
+    Without this guard, calling `.get(...)` on a list/string/number body
+    raises AttributeError mid-handler and escapes to a generic 500.
+    """
+    if not isinstance(data, dict):
+        return None, (jsonify({
+            'success': False, 'error': 'Request body must be a JSON object'
+        }), 400)
+    return data, None
+
+
+def _require_str(data, key, default=None):
+    """Read `data[key]` and require it to be a string (or unset, in which
+    case the default is used). Returns (value, None) on success or
+    (None, response_tuple) on failure.
+
+    Non-string values for fields that are then `.lower()`'d or used in
+    set-membership checks otherwise crash to 500.
+    """
+    val = data.get(key, default)
+    if val is None and default is not None:
+        val = default
+    if not isinstance(val, str):
+        return None, (jsonify({
+            'success': False, 'error': f"'{key}' must be a string"
+        }), 400)
+    return val, None
+
+
 # ─── Token helpers (per-alert ownership) ─────────────
 
 def _hash_token(token):
@@ -92,6 +128,23 @@ def _tokens_from_header():
     return [_hash_token(t) for t in parts[:_MAX_TOKENS_PER_REQUEST]]
 
 
+# ─── Global error handlers ───────────────────────────
+# Convert exceptions that previously escaped to a generic 500 into the
+# correct 4xx + JSON shape, matching the rest of the API contract.
+
+@app.errorhandler(RequestEntityTooLarge)
+def _too_large(_e):
+    return jsonify({'success': False, 'error': 'Request body too large'}), 413
+
+
+@app.errorhandler(RecursionError)
+def _too_nested(_e):
+    # Triggered by JSON bodies deeper than Python's recursion limit
+    # (~1000). The body cap is already small, but a tightly-nested 12 KB
+    # payload still crashes the parser.
+    return jsonify({'success': False, 'error': 'Request body nested too deeply'}), 400
+
+
 @app.after_request
 def add_security_headers(response):
     """Privacy/security response headers applied to every response.
@@ -112,6 +165,11 @@ def add_security_headers(response):
     response.headers['Permissions-Policy'] = (
         'geolocation=(), camera=(), microphone=(), payment=(), interest-cohort=()'
     )
+    # Default to no-store so intermediate caches / CDNs can't replay one
+    # caller's auth-bound response to another. Handlers that return safely
+    # cacheable public data can override this header explicitly.
+    if 'Cache-Control' not in response.headers:
+        response.headers['Cache-Control'] = 'private, no-store'
     return response
 
 
@@ -362,11 +420,16 @@ def convert_crypto():
         "amount": 0.01,       // or "btc_amount" for backwards compat
     }
     """
+    # Read body outside the broad try so RequestEntityTooLarge / RecursionError
+    # bubble up to the app-level error handlers and produce the correct 413/400.
+    raw_body = request.get_json(silent=True)
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
-        crypto = data.get('crypto', 'bitcoin')
+        data, err = _require_json_object(raw_body)
+        if err:
+            return err
+        crypto, err = _require_str(data, 'crypto', 'bitcoin')
+        if err:
+            return err
         raw_amount = data.get('amount') or data.get('btc_amount', 0)
         try:
             amount = Decimal(str(raw_amount))
@@ -435,14 +498,20 @@ def convert_fiat_to_crypto():
         "crypto": "bitcoin"  // optional, defaults to bitcoin
     }
     """
+    raw_body = request.get_json(silent=True)
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
+        data, err = _require_json_object(raw_body)
+        if err:
+            return err
 
         fiat_amount = data.get('fiat_amount')
-        fiat_currency = data.get('fiat_currency', 'usd').lower()
-        crypto = data.get('crypto', 'bitcoin')
+        fiat_currency, err = _require_str(data, 'fiat_currency', 'usd')
+        if err:
+            return err
+        fiat_currency = fiat_currency.lower()
+        crypto, err = _require_str(data, 'crypto', 'bitcoin')
+        if err:
+            return err
 
         if fiat_amount is None:
             return jsonify({'success': False, 'error': 'fiat_amount is required'}), 400
@@ -517,15 +586,24 @@ def create_alert():
     this token (e.g. localStorage) — it's required to delete/ack the alert
     and to list it via GET. The server stores only the SHA-256 hash.
     """
+    raw_body = request.get_json(silent=True)
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
+        data, err = _require_json_object(raw_body)
+        if err:
+            return err
 
         target_price = data.get('target_price')
-        currency = data.get('currency', 'usd').lower()
-        direction = data.get('direction', 'above').lower()
-        crypto = data.get('crypto', 'bitcoin')
+        currency, err = _require_str(data, 'currency', 'usd')
+        if err:
+            return err
+        currency = currency.lower()
+        direction, err = _require_str(data, 'direction', 'above')
+        if err:
+            return err
+        direction = direction.lower()
+        crypto, err = _require_str(data, 'crypto', 'bitcoin')
+        if err:
+            return err
 
         if target_price is None:
             return jsonify({'success': False, 'error': 'target_price required'}), 400
@@ -543,6 +621,8 @@ def create_alert():
             return jsonify({'success': False, 'error': 'currency must be usd or eur'}), 400
         if direction not in ('above', 'below'):
             return jsonify({'success': False, 'error': 'direction must be above or below'}), 400
+        if crypto not in SUPPORTED_CRYPTOS:
+            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
 
         edit_token = secrets.token_urlsafe(32)
         edit_token_hash = _hash_token(edit_token)
@@ -713,12 +793,13 @@ def acknowledge_alerts():
     stored hash. Items with missing/invalid tokens are silently skipped.
     Capped at _MAX_ACKS_PER_REQUEST items per request.
     """
+    raw_body = request.get_json(silent=True)
     try:
-        data = request.get_json(silent=True)
-        if not data or 'acks' not in data:
-            return jsonify({'success': False, 'error': 'acks array required'}), 400
+        data, err = _require_json_object(raw_body)
+        if err:
+            return err
 
-        acks = data['acks']
+        acks = data.get('acks')
         if not isinstance(acks, list) or len(acks) == 0:
             return jsonify({'success': False, 'error': 'acks must be a non-empty array'}), 400
         if len(acks) > _MAX_ACKS_PER_REQUEST:
