@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './AlertManager.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 // Per-alert edit tokens (returned once by POST /alerts) live in
 // localStorage keyed by alert id. They prove ownership to the API for
