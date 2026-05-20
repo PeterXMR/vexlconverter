@@ -2,10 +2,10 @@
 
 Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live prices, historical charts, and user-configurable alerts.
 
-🌐 **[Live Demo](https://vexlconverter.vercel.app)** · 🔌 **[API](https://vexlconverter-api.onrender.com/api/health)**
+🌐 **[Live Demo](https://vexlconverter.vercel.app)** · 🔌 **[API health](https://vexlconverter-api.onrender.com/api/health)**
 
-![Python](https://img.shields.io/badge/python-3.12-blue)
-![React](https://img.shields.io/badge/react-18-61dafb)
+![Python](https://img.shields.io/badge/python-3.14-blue)
+![React](https://img.shields.io/badge/react-19-61dafb)
 ![Postgres](https://img.shields.io/badge/postgres-15-336791)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/PeterXMR/vexlconverter/actions/workflows/docker-image.yml/badge.svg)
@@ -15,40 +15,44 @@ Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live pric
 
 ## Features
 
-- Multi-crypto conversion (Bitcoin plus additional cryptocurrencies) against multiple fiat currencies
-- Fiat-to-fiat conversion using cross-rates derived from crypto price feeds
-- Universal conversion mode that lets the user pick any supported pair
-- Reverse conversion (fiat amount back to crypto)
-- Price alerts with persistent storage, triggered-alert queue, and acknowledgement flow
-- Historical price charts with 24h / 7d / 30d ranges
-- Live prices sourced from the CoinGecko public API, refreshed on a schedule
-- APScheduler background jobs for price refresh and history backfill
-- Swagger UI for interactive API exploration
-- Dockerised stack (Flask API, React SPA served by Nginx, PostgreSQL 15)
+- **Four conversion modes** — BTC↔fiat, crypto↔crypto, fiat↔fiat, and a universal "any to any" mode
+- **Reverse conversion** — fiat amount back to crypto
+- **162 fiat currencies** sourced from ExchangeRate-API, with a searchable picker
+- **Price alerts** with persistent storage, per-alert ownership tokens, triggered-alert queue, and browser-notification acknowledgement
+- **Historical price charts** with 24h / 7d / 30d / 1Y ranges and USD/EUR toggle
+- **Live prices** sourced from CoinGecko, refreshed by APScheduler
+- **Fluid UI** that reflows from desktop down to ~360 px (container queries + auto-fit grids)
+- **Security**: per-alert HMAC-verified edit tokens, Flask-Limiter rate limiting, strict CSP, HSTS, no IP logging
+- **Swagger UI** for interactive API exploration
+- **Dockerised stack** (Flask API, React SPA served by Nginx, PostgreSQL 15) plus production manifests for Vercel + Render + Neon
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  User([Browser]) -->|HTTP| Nginx[Nginx / React SPA]
-  Nginx -->|REST JSON| Flask[Flask API]
-  Flask -->|SQLAlchemy| PG[(PostgreSQL)]
-  Flask -.->|Scheduled fetch| CG[CoinGecko API]
-  APS[APScheduler] -.-> Flask
+  User([Browser]) -->|HTTPS| SPA[React SPA<br/>Vercel / Nginx]
+  SPA -->|REST JSON| API[Flask API<br/>Render / Docker]
+  API -->|SQLAlchemy| PG[(PostgreSQL<br/>Neon / Docker)]
+  API -.->|scheduled| CG[CoinGecko]
+  API -.->|on demand| ER[ExchangeRate-API]
+  APS[APScheduler] -.-> API
 ```
+
+The same containers run locally (`docker compose`) and on managed services in production (Vercel for the SPA, Render for the API, Neon for Postgres).
 
 ## Tech stack
 
 | Layer     | Tech                                  | Purpose                                              |
 |-----------|---------------------------------------|------------------------------------------------------|
-| Frontend  | React 18, Axios, Chart.js             | SPA UI, API calls, price-history visualisation        |
-| Web tier  | Nginx                                 | Serves the production React bundle                    |
-| Backend   | Python 3.12, Flask 3, SQLAlchemy 2    | REST API and ORM                                      |
-| Jobs      | APScheduler                           | Periodic price refresh and history jobs               |
-| Database  | PostgreSQL 15                         | Price snapshots, alerts, history                      |
-| Data feed | CoinGecko public API                  | Source of live and historical prices                  |
-| Docs      | Swagger UI + `swagger.json`           | Interactive API reference                             |
-| CI        | GitHub Actions                        | Build and smoke-test the Docker images                |
+| Frontend  | React 19, Axios, Chart.js             | SPA UI, API calls, price-history visualisation       |
+| Web tier  | Nginx (Docker) / Vercel (prod)        | Serves the production React bundle                   |
+| Backend   | Python 3.14, Flask 3, SQLAlchemy 2    | REST API and ORM                                     |
+| Jobs      | APScheduler                           | Periodic price refresh and history jobs              |
+| Database  | PostgreSQL 15 (Docker) / Neon (prod)  | Price snapshots, alerts, history                     |
+| Rate limit| Flask-Limiter (in-memory)             | Per-IP buckets on write/expensive endpoints          |
+| Data feeds| CoinGecko + ExchangeRate-API          | Live crypto prices + 162 fiat cross-rates            |
+| Docs      | Swagger UI + `backend/swagger.json`   | Interactive API reference                            |
+| CI        | GitHub Actions                        | Lint, tests, build, Docker smoke test, Trivy scan    |
 
 ## Quick start
 
@@ -62,7 +66,7 @@ Then open:
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5001
-- Swagger UI: http://localhost:5001/api/docs
+- Swagger UI: http://localhost:5001/api/docs (set `ENABLE_API_DOCS=true` to enable in production)
 
 Stop the stack with `docker compose down`.
 
@@ -88,21 +92,27 @@ npm start              # listens on :3000
 All endpoints are rooted at `http://localhost:5001`. See Swagger UI (`/api/docs`) or the raw
 schema (`/static/swagger.json`) for request/response payloads.
 
-| Method | Path                       | Description                                         |
-|--------|----------------------------|-----------------------------------------------------|
-| GET    | `/api/health`              | Liveness probe                                      |
-| GET    | `/api/cryptos`             | List supported cryptocurrencies                     |
-| GET    | `/api/prices/latest`       | Latest price snapshot (all supported assets)        |
-| GET    | `/api/prices/all`          | Full latest-price table, grouped by asset           |
-| POST   | `/api/convert`             | Convert a crypto amount to fiat                     |
-| POST   | `/api/convert/reverse`     | Convert a fiat amount back to crypto                |
-| POST   | `/api/alerts`              | Create a price alert                                |
-| GET    | `/api/alerts`              | List all configured alerts                          |
-| DELETE | `/api/alerts/<id>`         | Delete an alert by id                               |
-| GET    | `/api/alerts/triggered`    | List alerts that have fired but not been acked      |
-| POST   | `/api/alerts/ack`          | Acknowledge one or more triggered alerts            |
-| GET    | `/api/prices/history`      | Historical prices (24h / 7d / 30d ranges)           |
-| GET    | `/static/swagger.json`     | Raw OpenAPI document                                |
+| Method | Path                       | Rate limit         | Description                                        |
+|--------|----------------------------|--------------------|----------------------------------------------------|
+| GET    | `/api/health`              | —                  | Liveness probe                                     |
+| GET    | `/api/cryptos`             | —                  | List supported cryptocurrencies                    |
+| GET    | `/api/fiat-rates`          | 30/min             | USD-base fiat rates (cached, proxied)              |
+| GET    | `/api/prices/latest`       | —                  | Latest price snapshot                              |
+| GET    | `/api/prices/all`          | —                  | Full latest-price table, grouped by asset          |
+| POST   | `/api/convert`             | —                  | Convert a crypto amount to fiat                    |
+| POST   | `/api/convert/reverse`     | —                  | Convert a fiat amount back to crypto               |
+| POST   | `/api/alerts`              | 10/min             | Create a price alert (returns one-time edit token) |
+| GET    | `/api/alerts`              | —                  | List alerts you own (`X-Alert-Tokens` header)      |
+| DELETE | `/api/alerts/<id>`         | —                  | Delete an alert you own (`X-Alert-Token` header)   |
+| GET    | `/api/alerts/triggered`    | —                  | Triggered, unacked alerts you own                  |
+| POST   | `/api/alerts/ack`          | 10/min             | Acknowledge one or more triggered alerts           |
+| GET    | `/api/prices/history`      | 20/min             | Historical prices (24h / 7d / 30d / 1y)            |
+| GET    | `/static/swagger.json`     | —                  | Raw OpenAPI document                               |
+
+Alert ownership is enforced via per-alert tokens: `POST /api/alerts` returns a one-time edit
+token, which the client stores in `localStorage` and replays via `X-Alert-Token` (single) or
+`X-Alert-Tokens` (comma-separated for list) headers. The server stores only a SHA-256 hash and
+constant-time compares with `hmac.compare_digest`.
 
 ## Project structure
 
@@ -115,6 +125,7 @@ schema (`/static/swagger.json`) for request/response payloads.
 │   ├── swagger.json
 │   ├── requirements.txt
 │   ├── entrypoint.sh
+│   ├── gunicorn.conf.py
 │   ├── test_setup.py
 │   └── Dockerfile
 ├── frontend/                 # React SPA + Nginx image
@@ -124,15 +135,19 @@ schema (`/static/swagger.json`) for request/response payloads.
 │   ├── package.json
 │   └── Dockerfile
 ├── database/
-│   └── init.sql              # Postgres schema bootstrap
+│   └── init.sql              # Postgres schema bootstrap (Docker)
+├── scripts/
+│   ├── diagnose.sh           # Environment diagnostic helper
+│   ├── fresh-setup.sh        # Wipe-and-rebuild helper
+│   ├── start-docker.sh       # Convenience launcher (Docker)
+│   ├── start-local.sh        # Convenience launcher (local dev)
+│   └── test-workflow.sh      # Reproduces the CI steps locally
 ├── .github/workflows/
-│   └── docker-image.yml      # CI: build + smoke-test images
-├── docker-compose.yml        # Multi-container orchestration
-├── diagnose.sh               # Environment diagnostic helper
-├── fresh-setup.sh            # Wipe-and-rebuild helper
-├── start-docker.sh           # Convenience launcher (Docker)
-├── start-local.sh            # Convenience launcher (local dev)
-├── test-workflow.sh          # Reproduces the CI steps locally
+│   └── docker-image.yml      # CI: lint + test + build + smoke test + Trivy
+├── docker-compose.yml        # Multi-container orchestration (local)
+├── render.yaml               # Render Blueprint (backend deploy)
+├── vercel.json               # Vercel headers (CSP, HSTS, Permissions-Policy)
+├── screenshot.png
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -142,16 +157,23 @@ schema (`/static/swagger.json`) for request/response payloads.
 
 ## Configuration
 
-The backend reads the following environment variables. See `.env.example` (if present) for a
-template; supply them via `docker-compose.yml`, your shell, or a local `.env` file.
+The backend reads the following environment variables. Supply them via `docker-compose.yml`,
+your shell, a local `.env` file, or platform secrets (Render env vars for production).
 
-| Variable                 | Default                                                          | Purpose                                   |
-|--------------------------|------------------------------------------------------------------|-------------------------------------------|
-| `DATABASE_URL`           | `postgresql://user:user@localhost:5432/btc_converter`            | SQLAlchemy connection string              |
-| `FLASK_ENV`              | `development`                                                    | Flask environment                         |
-| `FLASK_PORT`             | `5001`                                                           | API listen port                           |
-| `COINGECKO_API_URL`      | `https://api.coingecko.com/api/v3/simple/price`                  | Upstream price feed                       |
-| `PRICE_UPDATE_INTERVAL`  | `300` (seconds)                                                  | APScheduler refresh interval              |
+| Variable                   | Default                                                          | Purpose                                            |
+|----------------------------|------------------------------------------------------------------|----------------------------------------------------|
+| `DATABASE_URL`             | _required in production; `postgresql://user:user@localhost:5432/btc_converter` for local_ | SQLAlchemy connection string         |
+| `FLASK_ENV`                | `production`                                                     | `production` enforces DATABASE_URL + disables docs |
+| `FLASK_PORT`               | `5001`                                                           | API listen port                                    |
+| `FLASK_DEBUG`              | `false`                                                          | Enables Flask debug mode                           |
+| `LOG_LEVEL`                | `INFO`                                                           | Python logging level                               |
+| `CORS_ORIGINS`             | `http://localhost:3000`                                          | Comma-separated allowed origins                    |
+| `COINGECKO_API_URL`        | `https://api.coingecko.com/api/v3/simple/price`                  | Upstream crypto price feed                         |
+| `FIAT_RATES_PROVIDER_URL`  | `https://open.er-api.com/v6/latest/USD`                          | Upstream fiat-rates feed (proxied)                 |
+| `PRICE_UPDATE_INTERVAL`    | `300` (seconds)                                                  | APScheduler refresh interval                       |
+| `RUN_SCHEDULER`            | `true`                                                           | Set to `false` to disable in-process scheduler     |
+| `ENABLE_API_DOCS`          | `false` in production                                            | Forces Swagger UI on in production                 |
+| `POSTGRES_PASSWORD`        | `changeme`                                                       | Postgres password for the Docker stack             |
 
 The frontend reads `REACT_APP_API_URL` at build time (Create React App bakes env vars into the
 bundle, so it must be set before `npm run build` or passed as a Docker build `ARG`).
@@ -159,28 +181,35 @@ bundle, so it must be set before `npm run build` or passed as a Docker build `AR
 ## Testing
 
 ```bash
-# Backend
+# Backend (lint + tests if present)
 cd backend
-pytest
+ruff check .
+# pytest runs only if backend/tests/ exists
 
-# Frontend
+# Frontend (smoke test + production build)
 cd frontend
-npm test
+npm test -- --watchAll=false
+npm run build
 ```
 
-`test-workflow.sh` at the repo root reproduces the CI pipeline locally: it builds the images,
-boots the stack, and hits `/api/health`.
+`scripts/test-workflow.sh` reproduces the CI pipeline locally: it builds the images, boots the
+stack, and hits `/api/health`.
 
 ## Deployment
 
-The project ships as three containers orchestrated by `docker-compose.yml` and will run on any
-host with Docker Engine. For managed platforms:
+**Production deployment** uses three managed services configured to mirror the local Docker
+stack:
 
-- **Fly.io** — `fly launch` from the repo root; create a Postgres attachment and set
-  `DATABASE_URL` as a secret.
-- **Render** — one web service per Dockerfile plus a managed Postgres instance.
-- **Any VPS** — clone, set env vars, `docker compose up -d`, put a reverse proxy (Caddy / Traefik)
-  in front for TLS.
+- **Frontend → Vercel** — `vercel.json` ships strict security headers (CSP, HSTS, Referrer-Policy,
+  Permissions-Policy). Set `REACT_APP_API_URL` to the backend URL as a build-time env var.
+- **Backend → Render** — `render.yaml` is a Render Blueprint that builds the Docker image.
+  Set `DATABASE_URL` and `CORS_ORIGINS` as Render secrets.
+- **Database → Neon** — managed Postgres; copy the connection string into Render as
+  `DATABASE_URL`. Schema is auto-bootstrapped on first startup via `init_schema()` in
+  `backend/models.py`.
+
+For any other host with Docker Engine, `docker compose up -d` runs the whole stack. Put a
+reverse proxy (Caddy / Traefik) in front for TLS if you're self-hosting.
 
 ## Contributing
 
