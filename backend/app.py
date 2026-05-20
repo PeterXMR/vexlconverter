@@ -16,6 +16,7 @@ from flask_limiter.util import get_remote_address
 from flask_swagger_ui import get_swaggerui_blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from models import BTCPrice, CryptoPrice, PriceAlert, SUPPORTED_CRYPTOS, get_db, init_schema
@@ -63,6 +64,14 @@ limiter = Limiter(
 )
 
 
+# Body and per-field type guards are inlined at each call site (rather
+# than refactored into helper functions) so the error responses contain
+# only literal strings — provably free of user-controlled data and clean
+# under CodeQL's reflected-XSS taint tracker, which conservatively flags
+# any function that accepts the parsed request body and returns a
+# response.
+
+
 # ─── Token helpers (per-alert ownership) ─────────────
 
 def _hash_token(token):
@@ -92,6 +101,23 @@ def _tokens_from_header():
     return [_hash_token(t) for t in parts[:_MAX_TOKENS_PER_REQUEST]]
 
 
+# ─── Global error handlers ───────────────────────────
+# Convert exceptions that previously escaped to a generic 500 into the
+# correct 4xx + JSON shape, matching the rest of the API contract.
+
+@app.errorhandler(RequestEntityTooLarge)
+def _too_large(_e):
+    return jsonify({'success': False, 'error': 'Request body too large'}), 413
+
+
+@app.errorhandler(RecursionError)
+def _too_nested(_e):
+    # Triggered by JSON bodies deeper than Python's recursion limit
+    # (~1000). The body cap is already small, but a tightly-nested 12 KB
+    # payload still crashes the parser.
+    return jsonify({'success': False, 'error': 'Request body nested too deeply'}), 400
+
+
 @app.after_request
 def add_security_headers(response):
     """Privacy/security response headers applied to every response.
@@ -112,6 +138,11 @@ def add_security_headers(response):
     response.headers['Permissions-Policy'] = (
         'geolocation=(), camera=(), microphone=(), payment=(), interest-cohort=()'
     )
+    # Default to no-store so intermediate caches / CDNs can't replay one
+    # caller's auth-bound response to another. Handlers that return safely
+    # cacheable public data can override this header explicitly.
+    if 'Cache-Control' not in response.headers:
+        response.headers['Cache-Control'] = 'private, no-store'
     return response
 
 
@@ -276,7 +307,7 @@ def get_latest_prices():
     crypto = request.args.get('crypto', 'bitcoin')
 
     if crypto not in SUPPORTED_CRYPTOS:
-        return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+        return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
     try:
         with get_db() as db:
@@ -362,11 +393,15 @@ def convert_crypto():
         "amount": 0.01,       // or "btc_amount" for backwards compat
     }
     """
+    # Read body outside the broad try so RequestEntityTooLarge / RecursionError
+    # bubble up to the app-level error handlers and produce the correct 413/400.
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
         crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
         raw_amount = data.get('amount') or data.get('btc_amount', 0)
         try:
             amount = Decimal(str(raw_amount))
@@ -376,7 +411,7 @@ def convert_crypto():
             return jsonify({'success': False, 'error': 'amount must be a finite number'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
-            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         if amount <= 0:
             return jsonify({'success': False, 'error': 'Amount must be greater than 0'}), 400
@@ -435,14 +470,18 @@ def convert_fiat_to_crypto():
         "crypto": "bitcoin"  // optional, defaults to bitcoin
     }
     """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
-
         fiat_amount = data.get('fiat_amount')
-        fiat_currency = data.get('fiat_currency', 'usd').lower()
+        fiat_currency = data.get('fiat_currency', 'usd')
+        if not isinstance(fiat_currency, str):
+            return jsonify({'success': False, 'error': "'fiat_currency' must be a string"}), 400
+        fiat_currency = fiat_currency.lower()
         crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
 
         if fiat_amount is None:
             return jsonify({'success': False, 'error': 'fiat_amount is required'}), 400
@@ -463,10 +502,10 @@ def convert_fiat_to_crypto():
             return jsonify({'success': False, 'error': 'fiat_currency must be usd or eur'}), 400
 
         if fiat_currency not in VALID_FIAT_CURRENCIES:
-            return jsonify({'success': False, 'error': f'Unknown fiat currency: {fiat_currency}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown fiat currency'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
-            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         with get_db() as db:
             latest = db.query(
@@ -517,15 +556,22 @@ def create_alert():
     this token (e.g. localStorage) — it's required to delete/ack the alert
     and to list it via GET. The server stores only the SHA-256 hash.
     """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'error': 'Request body required'}), 400
-
         target_price = data.get('target_price')
-        currency = data.get('currency', 'usd').lower()
-        direction = data.get('direction', 'above').lower()
+        currency = data.get('currency', 'usd')
+        if not isinstance(currency, str):
+            return jsonify({'success': False, 'error': "'currency' must be a string"}), 400
+        currency = currency.lower()
+        direction = data.get('direction', 'above')
+        if not isinstance(direction, str):
+            return jsonify({'success': False, 'error': "'direction' must be a string"}), 400
+        direction = direction.lower()
         crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
 
         if target_price is None:
             return jsonify({'success': False, 'error': 'target_price required'}), 400
@@ -543,6 +589,8 @@ def create_alert():
             return jsonify({'success': False, 'error': 'currency must be usd or eur'}), 400
         if direction not in ('above', 'below'):
             return jsonify({'success': False, 'error': 'direction must be above or below'}), 400
+        if crypto not in SUPPORTED_CRYPTOS:
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         edit_token = secrets.token_urlsafe(32)
         edit_token_hash = _hash_token(edit_token)
@@ -713,12 +761,11 @@ def acknowledge_alerts():
     stored hash. Items with missing/invalid tokens are silently skipped.
     Capped at _MAX_ACKS_PER_REQUEST items per request.
     """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data = request.get_json(silent=True)
-        if not data or 'acks' not in data:
-            return jsonify({'success': False, 'error': 'acks array required'}), 400
-
-        acks = data['acks']
+        acks = data.get('acks')
         if not isinstance(acks, list) or len(acks) == 0:
             return jsonify({'success': False, 'error': 'acks must be a non-empty array'}), 400
         if len(acks) > _MAX_ACKS_PER_REQUEST:
@@ -781,7 +828,7 @@ def get_price_history():
     if crypto not in SUPPORTED_CRYPTOS:
         return jsonify({
             'success': False,
-            'error': f'Unknown crypto: {crypto}'
+            'error': 'Unknown crypto'
         }), 400
 
     now = datetime.now(timezone.utc)
