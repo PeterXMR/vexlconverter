@@ -81,22 +81,10 @@ def _require_json_object(data):
     return data, None
 
 
-def _require_str(data, key, default=None):
-    """Read `data[key]` and require it to be a string (or unset, in which
-    case the default is used). Returns (value, None) on success or
-    (None, response_tuple) on failure.
-
-    Non-string values for fields that are then `.lower()`'d or used in
-    set-membership checks otherwise crash to 500.
-    """
-    val = data.get(key, default)
-    if val is None and default is not None:
-        val = default
-    if not isinstance(val, str):
-        return None, (jsonify({
-            'success': False, 'error': f"'{key}' must be a string"
-        }), 400)
-    return val, None
+# Type guards for individual string-typed fields are inlined at each call
+# site (rather than refactored into a helper) so the error message contains
+# only literal strings — which is provably free of user-controlled data
+# and keeps static analyzers like CodeQL clean.
 
 
 # ─── Token helpers (per-alert ownership) ─────────────
@@ -334,7 +322,7 @@ def get_latest_prices():
     crypto = request.args.get('crypto', 'bitcoin')
 
     if crypto not in SUPPORTED_CRYPTOS:
-        return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+        return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
     try:
         with get_db() as db:
@@ -427,9 +415,9 @@ def convert_crypto():
         data, err = _require_json_object(raw_body)
         if err:
             return err
-        crypto, err = _require_str(data, 'crypto', 'bitcoin')
-        if err:
-            return err
+        crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
         raw_amount = data.get('amount') or data.get('btc_amount', 0)
         try:
             amount = Decimal(str(raw_amount))
@@ -439,7 +427,7 @@ def convert_crypto():
             return jsonify({'success': False, 'error': 'amount must be a finite number'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
-            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         if amount <= 0:
             return jsonify({'success': False, 'error': 'Amount must be greater than 0'}), 400
@@ -505,13 +493,13 @@ def convert_fiat_to_crypto():
             return err
 
         fiat_amount = data.get('fiat_amount')
-        fiat_currency, err = _require_str(data, 'fiat_currency', 'usd')
-        if err:
-            return err
+        fiat_currency = data.get('fiat_currency', 'usd')
+        if not isinstance(fiat_currency, str):
+            return jsonify({'success': False, 'error': "'fiat_currency' must be a string"}), 400
         fiat_currency = fiat_currency.lower()
-        crypto, err = _require_str(data, 'crypto', 'bitcoin')
-        if err:
-            return err
+        crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
 
         if fiat_amount is None:
             return jsonify({'success': False, 'error': 'fiat_amount is required'}), 400
@@ -532,10 +520,10 @@ def convert_fiat_to_crypto():
             return jsonify({'success': False, 'error': 'fiat_currency must be usd or eur'}), 400
 
         if fiat_currency not in VALID_FIAT_CURRENCIES:
-            return jsonify({'success': False, 'error': f'Unknown fiat currency: {fiat_currency}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown fiat currency'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
-            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         with get_db() as db:
             latest = db.query(
@@ -593,17 +581,17 @@ def create_alert():
             return err
 
         target_price = data.get('target_price')
-        currency, err = _require_str(data, 'currency', 'usd')
-        if err:
-            return err
+        currency = data.get('currency', 'usd')
+        if not isinstance(currency, str):
+            return jsonify({'success': False, 'error': "'currency' must be a string"}), 400
         currency = currency.lower()
-        direction, err = _require_str(data, 'direction', 'above')
-        if err:
-            return err
+        direction = data.get('direction', 'above')
+        if not isinstance(direction, str):
+            return jsonify({'success': False, 'error': "'direction' must be a string"}), 400
         direction = direction.lower()
-        crypto, err = _require_str(data, 'crypto', 'bitcoin')
-        if err:
-            return err
+        crypto = data.get('crypto', 'bitcoin')
+        if not isinstance(crypto, str):
+            return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
 
         if target_price is None:
             return jsonify({'success': False, 'error': 'target_price required'}), 400
@@ -622,7 +610,7 @@ def create_alert():
         if direction not in ('above', 'below'):
             return jsonify({'success': False, 'error': 'direction must be above or below'}), 400
         if crypto not in SUPPORTED_CRYPTOS:
-            return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
+            return jsonify({'success': False, 'error': 'Unknown crypto'}), 400
 
         edit_token = secrets.token_urlsafe(32)
         edit_token_hash = _hash_token(edit_token)
@@ -862,7 +850,7 @@ def get_price_history():
     if crypto not in SUPPORTED_CRYPTOS:
         return jsonify({
             'success': False,
-            'error': f'Unknown crypto: {crypto}'
+            'error': 'Unknown crypto'
         }), 400
 
     now = datetime.now(timezone.utc)
