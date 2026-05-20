@@ -13,10 +13,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-4);
+  gap: var(--s-3);
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
   background: var(--bg-1);
+  /* Always wrap onto two rows when the wordmark + tabs can't share a row,
+   * instead of clipping the wordmark off the left edge. */
+  flex-wrap: wrap;
 }
 
 .topbar .wordmark {
@@ -28,6 +31,9 @@
   background-clip: text;
   letter-spacing: -0.01em;
   white-space: nowrap;
+  /* Allow the wordmark to shrink inside the flex parent before pushing
+   * tabs off-screen. */
+  min-width: 0;
 }
 
 .topbar .wordmark small {
@@ -45,20 +51,26 @@
   padding: var(--s-3);
   display: grid;
   gap: var(--s-3);
-  grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr);
+  /* Both tracks use minmax(0, …) so panes can shrink below their intrinsic
+   * min-content size — without this, long select option labels or chart
+   * tooltips would force the grid wider than the viewport. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   grid-template-areas:
     "convert chart"
     "convert alerts";
   align-items: start;
 }
 
-.workspace > .convert-pane { grid-area: convert; }
-.workspace > .chart-pane   { grid-area: chart; }
-.workspace > .alerts-pane  { grid-area: alerts; }
+/* min-width: 0 on grid-area children lets the panes (and everything inside
+ * them, recursively, when paired with .converter / .input-section min-width:0)
+ * actually obey the 1fr track width instead of expanding to fit content. */
+.workspace > .convert-pane { grid-area: convert; min-width: 0; }
+.workspace > .chart-pane   { grid-area: chart;   min-width: 0; }
+.workspace > .alerts-pane  { grid-area: alerts;  min-width: 0; }
 
 @media (max-width: 1079px) {
   .workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "convert"
       "chart"
@@ -69,7 +81,6 @@
 @media (max-width: 640px) {
   .topbar {
     padding: var(--s-2) var(--s-3);
-    flex-wrap: wrap;
   }
   .workspace {
     padding: var(--s-2);
