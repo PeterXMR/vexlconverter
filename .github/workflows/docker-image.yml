@@ -24,7 +24,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-          pip install pytest ruff
+          pip install pytest ruff pip-audit
+
+      - name: Audit backend dependencies (fail on any known vuln)
+        # PYSEC-2024-271 (CVE-2024-1681): flask-cors CRLF log injection.
+        # Only triggers when LOG_LEVEL=DEBUG; production defaults to INFO
+        # and the app never sets DEBUG in production (FLASK_DEBUG=false,
+        # LOG_LEVEL=INFO). Drop this --ignore-vuln once a fixed flask-cors
+        # ships. https://github.com/corydolphin/flask-cors
+        run: pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2024-271
 
       - name: Lint backend with ruff
         run: ruff check backend/
