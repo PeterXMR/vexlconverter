@@ -103,6 +103,12 @@ def add_security_headers(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # Block cross-origin embedding of API responses (CORP) and isolate the
+    # API's browsing context if a popup is ever opened from a doc page (COOP).
+    # CORS still permits the legitimate frontend origin via Access-Control-*.
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
     response.headers['Permissions-Policy'] = (
         'geolocation=(), camera=(), microphone=(), payment=(), interest-cohort=()'
     )
