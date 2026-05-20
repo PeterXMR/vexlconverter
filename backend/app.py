@@ -64,27 +64,12 @@ limiter = Limiter(
 )
 
 
-# ─── Body / type guards ──────────────────────────────
-
-def _require_json_object(data):
-    """Validate that `data` (result of request.get_json(silent=True)) is a
-    JSON object. Returns the dict on success or a Flask response tuple to
-    return immediately on failure.
-
-    Without this guard, calling `.get(...)` on a list/string/number body
-    raises AttributeError mid-handler and escapes to a generic 500.
-    """
-    if not isinstance(data, dict):
-        return None, (jsonify({
-            'success': False, 'error': 'Request body must be a JSON object'
-        }), 400)
-    return data, None
-
-
-# Type guards for individual string-typed fields are inlined at each call
-# site (rather than refactored into a helper) so the error message contains
-# only literal strings — which is provably free of user-controlled data
-# and keeps static analyzers like CodeQL clean.
+# Body and per-field type guards are inlined at each call site (rather
+# than refactored into helper functions) so the error responses contain
+# only literal strings — provably free of user-controlled data and clean
+# under CodeQL's reflected-XSS taint tracker, which conservatively flags
+# any function that accepts the parsed request body and returns a
+# response.
 
 
 # ─── Token helpers (per-alert ownership) ─────────────
@@ -410,11 +395,10 @@ def convert_crypto():
     """
     # Read body outside the broad try so RequestEntityTooLarge / RecursionError
     # bubble up to the app-level error handlers and produce the correct 413/400.
-    raw_body = request.get_json(silent=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data, err = _require_json_object(raw_body)
-        if err:
-            return err
         crypto = data.get('crypto', 'bitcoin')
         if not isinstance(crypto, str):
             return jsonify({'success': False, 'error': "'crypto' must be a string"}), 400
@@ -486,12 +470,10 @@ def convert_fiat_to_crypto():
         "crypto": "bitcoin"  // optional, defaults to bitcoin
     }
     """
-    raw_body = request.get_json(silent=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data, err = _require_json_object(raw_body)
-        if err:
-            return err
-
         fiat_amount = data.get('fiat_amount')
         fiat_currency = data.get('fiat_currency', 'usd')
         if not isinstance(fiat_currency, str):
@@ -574,12 +556,10 @@ def create_alert():
     this token (e.g. localStorage) — it's required to delete/ack the alert
     and to list it via GET. The server stores only the SHA-256 hash.
     """
-    raw_body = request.get_json(silent=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data, err = _require_json_object(raw_body)
-        if err:
-            return err
-
         target_price = data.get('target_price')
         currency = data.get('currency', 'usd')
         if not isinstance(currency, str):
@@ -781,12 +761,10 @@ def acknowledge_alerts():
     stored hash. Items with missing/invalid tokens are silently skipped.
     Capped at _MAX_ACKS_PER_REQUEST items per request.
     """
-    raw_body = request.get_json(silent=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Request body must be a JSON object'}), 400
     try:
-        data, err = _require_json_object(raw_body)
-        if err:
-            return err
-
         acks = data.get('acks')
         if not isinstance(acks, list) or len(acks) == 0:
             return jsonify({'success': False, 'error': 'acks must be a non-empty array'}), 400
