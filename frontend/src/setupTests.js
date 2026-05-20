@@ -1,13 +1,16 @@
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
 
-// axios@1.x ships ESM-only; CRA/Jest doesn't transpile it. Stub it for tests.
-jest.mock('axios', () => ({
-  get: jest.fn(() => Promise.resolve({ data: {} })),
-  post: jest.fn(() => Promise.resolve({ data: {} })),
-  delete: jest.fn(() => Promise.resolve({ data: {} })),
+// axios is ESM-only in 1.x. Mock it at the Vitest level so component
+// imports resolve in the jsdom test environment without hitting the
+// network.
+vi.mock('axios', () => ({
   default: {
-    get: jest.fn(() => Promise.resolve({ data: {} })),
-    post: jest.fn(() => Promise.resolve({ data: {} })),
-    delete: jest.fn(() => Promise.resolve({ data: {} })),
+    get: vi.fn(() => Promise.resolve({ data: {} })),
+    post: vi.fn(() => Promise.resolve({ data: {} })),
+    delete: vi.fn(() => Promise.resolve({ data: {} })),
   },
+  get: vi.fn(() => Promise.resolve({ data: {} })),
+  post: vi.fn(() => Promise.resolve({ data: {} })),
+  delete: vi.fn(() => Promise.resolve({ data: {} })),
 }));

@@ -1,14 +1,14 @@
 FROM node:26-alpine AS builder
 WORKDIR /app
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
 FROM nginx:alpine
-COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 # Note: master runs as root to bind port 80; workers drop to nginx user (default behaviour)

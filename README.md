@@ -175,8 +175,8 @@ your shell, a local `.env` file, or platform secrets (Render env vars for produc
 | `ENABLE_API_DOCS`          | `false` in production                                            | Forces Swagger UI on in production                 |
 | `POSTGRES_PASSWORD`        | `changeme`                                                       | Postgres password for the Docker stack             |
 
-The frontend reads `REACT_APP_API_URL` at build time (Create React App bakes env vars into the
-bundle, so it must be set before `npm run build` or passed as a Docker build `ARG`).
+The frontend reads `VITE_API_URL` at build time (Vite inlines `import.meta.env.VITE_*` into
+the bundle, so it must be set before `npm run build` or passed as a Docker build `ARG`).
 
 ## Testing
 
@@ -201,7 +201,7 @@ stack, and hits `/api/health`.
 stack:
 
 - **Frontend → Vercel** — `vercel.json` ships strict security headers (CSP, HSTS, Referrer-Policy,
-  Permissions-Policy). Set `REACT_APP_API_URL` to the backend URL as a build-time env var.
+  Permissions-Policy). Set `VITE_API_URL` to the backend URL as a build-time env var.
 - **Backend → Render** — `render.yaml` is a Render Blueprint that builds the Docker image.
   Set `DATABASE_URL` and `CORS_ORIGINS` as Render secrets.
 - **Database → Neon** — managed Postgres; copy the connection string into Render as
