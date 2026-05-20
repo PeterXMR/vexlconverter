@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# Default least-privilege token. Individual jobs override only if they
+# need write access (none do — Trivy scan, tests, and docker build are
+# all read-only with respect to repo content).
+permissions:
+  contents: read
+
 jobs:
   backend-test:
     name: Backend (lint + tests)
