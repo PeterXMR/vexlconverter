@@ -372,6 +372,8 @@ def convert_crypto():
             amount = Decimal(str(raw_amount))
         except (TypeError, ValueError, ArithmeticError):
             return jsonify({'success': False, 'error': 'amount must be a number'}), 400
+        if not amount.is_finite():
+            return jsonify({'success': False, 'error': 'amount must be a finite number'}), 400
 
         if crypto not in SUPPORTED_CRYPTOS:
             return jsonify({'success': False, 'error': f'Unknown crypto: {crypto}'}), 400
@@ -449,6 +451,8 @@ def convert_fiat_to_crypto():
             fiat_amount = Decimal(str(fiat_amount))
         except (TypeError, ValueError, ArithmeticError):
             return jsonify({'success': False, 'error': 'fiat_amount must be a number'}), 400
+        if not fiat_amount.is_finite():
+            return jsonify({'success': False, 'error': 'fiat_amount must be a finite number'}), 400
         if fiat_amount <= 0:
             return jsonify({'success': False, 'error': 'fiat_amount must be greater than 0'}), 400
 
@@ -529,6 +533,8 @@ def create_alert():
             target_price_dec = Decimal(str(target_price))
         except (TypeError, ValueError, ArithmeticError):
             return jsonify({'success': False, 'error': 'target_price must be a number'}), 400
+        if not target_price_dec.is_finite():
+            return jsonify({'success': False, 'error': 'target_price must be a finite number'}), 400
         if target_price_dec <= 0:
             return jsonify({'success': False, 'error': 'target_price must be positive'}), 400
         if target_price_dec > MAX_AMOUNT:
