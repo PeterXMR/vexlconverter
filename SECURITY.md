@@ -54,5 +54,6 @@ Out of scope:
 
 ## Disclosure
 
-Once a fix is released, we will publish a brief advisory in `CHANGELOG.md` and credit the
-reporter (unless anonymity is requested).
+Once a fix is released, we will publish a brief advisory under
+[Security Advisories](https://github.com/PeterXMR/vexlconverter/security/advisories)
+on GitHub and credit the reporter (unless anonymity is requested).
