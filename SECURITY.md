@@ -13,7 +13,17 @@ Only the latest released version receives security updates.
 
 Please report suspected security issues privately — **do not open a public GitHub issue**.
 
-Email: `security@example.com` *(replace with a real inbox before publishing)*
+**Preferred channel — GitHub private security advisory:**
+[github.com/PeterXMR/vexlconverter/security/advisories/new](https://github.com/PeterXMR/vexlconverter/security/advisories/new)
+
+Reports filed through this channel are encrypted in transit and at rest by
+GitHub, visible only to the maintainer and (after you opt in) collaborators.
+No email address or other personal contact information is exposed in either
+direction.
+
+A short machine-readable version of this policy is published at
+[/.well-known/security.txt](https://vexlconverter.vercel.app/.well-known/security.txt)
+per RFC 9116.
 
 Include, where possible:
 
