@@ -304,7 +304,7 @@ Things this design **does not** include, with the honest reasoning:
 
 - [SECURITY.md](../SECURITY.md) — disclosure policy
 - [/.well-known/security.txt](../frontend/public/.well-known/security.txt) — RFC 9116 contact
-- [CHANGELOG.md](../CHANGELOG.md) — public advisories on confirmed vulns
+- [GitHub Security Advisories](https://github.com/PeterXMR/vexlconverter/security/advisories) — published advisories on confirmed vulns
 - `backend/app.py` — all server-side enforcement
 - `frontend/vercel.json` — Vercel response headers
 - `backend/tests/test_input_validation.py` — regression tests for the

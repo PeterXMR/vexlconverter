@@ -63,5 +63,4 @@ npm run build        # catches build-time errors and warnings
 - Keep PRs focused — one concern per PR where possible.
 - Include a short summary of what changed and why.
 - Link any related issue in the description.
-- Update `CHANGELOG.md` under the `[Unreleased]` section for user-visible changes.
 - Make sure CI is green before requesting review.

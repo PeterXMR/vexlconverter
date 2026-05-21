@@ -148,7 +148,6 @@ constant-time compares with `hmac.compare_digest`.
 ├── render.yaml               # Render Blueprint (backend deploy)
 ├── vercel.json               # Vercel headers (CSP, HSTS, Permissions-Policy)
 ├── screenshot.png
-├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
 ├── LICENSE
