@@ -128,7 +128,11 @@ def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'no-referrer'
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # 2-year max-age + preload — eligible for browser preload lists once the
+    # apex host is submitted at https://hstspreload.org. One-way commitment;
+    # un-preloading takes months, so this is only safe because HTTPS is
+    # permanent on Vercel + Render.
+    response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     # Block cross-origin embedding of API responses (CORP) and isolate the
     # API's browsing context if a popup is ever opened from a doc page (COOP).
     # CORS still permits the legitimate frontend origin via Access-Control-*.

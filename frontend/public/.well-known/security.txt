@@ -1,0 +1,12 @@
+# Per RFC 9116. Contact channel for responsible disclosure of security
+# vulnerabilities affecting vexlconverter.
+#
+# Refresh "Expires" before the date below; clients that see an expired
+# security.txt are required to ignore it.
+
+Contact: https://github.com/PeterXMR/vexlconverter/security/advisories/new
+Expires: 2027-05-20T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://vexlconverter.vercel.app/.well-known/security.txt
+Policy: https://github.com/PeterXMR/vexlconverter/blob/main/SECURITY.md
+Acknowledgments: https://github.com/PeterXMR/vexlconverter/blob/main/CHANGELOG.md

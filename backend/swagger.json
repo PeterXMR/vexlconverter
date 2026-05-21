@@ -34,15 +34,26 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean" },
+                    "success": {
+                      "type": "boolean"
+                    },
                     "data": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "id": { "type": "string", "example": "bitcoin" },
-                          "symbol": { "type": "string", "example": "BTC" },
-                          "name": { "type": "string", "example": "Bitcoin" }
+                          "id": {
+                            "type": "string",
+                            "example": "bitcoin"
+                          },
+                          "symbol": {
+                            "type": "string",
+                            "example": "BTC"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Bitcoin"
+                          }
                         }
                       }
                     }
@@ -61,14 +72,23 @@
           {
             "name": "crypto",
             "in": "query",
-            "schema": { "type": "string", "default": "bitcoin" },
+            "schema": {
+              "type": "string",
+              "default": "bitcoin"
+            },
             "description": "CoinGecko crypto ID"
           }
         ],
         "responses": {
-          "200": { "description": "Latest price data" },
-          "400": { "description": "Unknown crypto" },
-          "404": { "description": "No price data available" }
+          "200": {
+            "description": "Latest price data"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "No price data available"
+          }
         }
       }
     },
@@ -76,7 +96,9 @@
       "get": {
         "summary": "Get latest prices for all supported cryptos",
         "responses": {
-          "200": { "description": "All latest prices keyed by crypto ID" }
+          "200": {
+            "description": "All latest prices keyed by crypto ID"
+          }
         }
       }
     },
@@ -87,17 +109,36 @@
           {
             "name": "period",
             "in": "query",
-            "schema": { "type": "string", "enum": ["24h", "7d", "30d", "1y"], "default": "24h" }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d",
+                "1y"
+              ],
+              "default": "24h"
+            }
           },
           {
             "name": "crypto",
             "in": "query",
-            "schema": { "type": "string", "default": "bitcoin" }
+            "schema": {
+              "type": "string",
+              "default": "bitcoin"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Historical price data with timestamps" },
-          "400": { "description": "Invalid period" }
+          "200": {
+            "description": "Historical price data with timestamps"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "429": {
+            "description": "Too Many Requests — rate limit exceeded"
+          }
         }
       }
     },
@@ -111,18 +152,36 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "crypto": { "type": "string", "default": "bitcoin" },
-                  "amount": { "type": "number", "example": 0.01 },
-                  "btc_amount": { "type": "number", "description": "Backwards-compatible alias for amount" }
+                  "crypto": {
+                    "type": "string",
+                    "default": "bitcoin"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "example": 0.01
+                  },
+                  "btc_amount": {
+                    "type": "number",
+                    "description": "Backwards-compatible alias for amount"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Conversion result with USD and EUR amounts" },
-          "400": { "description": "Invalid input" },
-          "404": { "description": "No price data" }
+          "200": {
+            "description": "Conversion result with USD and EUR amounts"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "No price data"
+          },
+          "413": {
+            "description": "Request body exceeds 64 KB"
+          }
         }
       }
     },
@@ -135,20 +194,44 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["fiat_amount"],
+                "required": [
+                  "fiat_amount"
+                ],
                 "properties": {
-                  "fiat_amount": { "type": "number", "example": 500 },
-                  "fiat_currency": { "type": "string", "enum": ["usd", "eur"], "default": "usd" },
-                  "crypto": { "type": "string", "default": "bitcoin" }
+                  "fiat_amount": {
+                    "type": "number",
+                    "example": 500
+                  },
+                  "fiat_currency": {
+                    "type": "string",
+                    "enum": [
+                      "usd",
+                      "eur"
+                    ],
+                    "default": "usd"
+                  },
+                  "crypto": {
+                    "type": "string",
+                    "default": "bitcoin"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Crypto amount equivalent" },
-          "400": { "description": "Invalid input" },
-          "404": { "description": "No price data" }
+          "200": {
+            "description": "Crypto amount equivalent"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "404": {
+            "description": "No price data"
+          },
+          "413": {
+            "description": "Request body exceeds 64 KB"
+          }
         }
       }
     },
@@ -156,8 +239,15 @@
       "get": {
         "summary": "List active price alerts",
         "responses": {
-          "200": { "description": "Array of active (non-triggered) alerts" }
-        }
+          "200": {
+            "description": "Array of active (non-triggered) alerts"
+          }
+        },
+        "security": [
+          {
+            "AlertTokens": []
+          }
+        ]
       },
       "post": {
         "summary": "Create a price alert",
@@ -167,20 +257,54 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["target_price"],
+                "required": [
+                  "target_price"
+                ],
                 "properties": {
-                  "target_price": { "type": "number", "example": 100000 },
-                  "currency": { "type": "string", "enum": ["usd", "eur"], "default": "usd" },
-                  "direction": { "type": "string", "enum": ["above", "below"], "default": "above" },
-                  "crypto": { "type": "string", "default": "bitcoin" }
+                  "target_price": {
+                    "type": "number",
+                    "example": 100000,
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "usd",
+                      "eur"
+                    ],
+                    "default": "usd"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "above",
+                      "below"
+                    ],
+                    "default": "above"
+                  },
+                  "crypto": {
+                    "type": "string",
+                    "default": "bitcoin"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Alert created" },
-          "400": { "description": "Invalid input" }
+          "201": {
+            "description": "Alert created"
+          },
+          "400": {
+            "description": "Validation error — bad body shape, type, or value"
+          },
+          "429": {
+            "description": "Too Many Requests — rate limit exceeded"
+          },
+          "413": {
+            "description": "Request body exceeds 64 KB"
+          }
         }
       }
     },
@@ -192,13 +316,24 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Alert deleted" },
-          "404": { "description": "Alert not found" }
-        }
+          "200": {
+            "description": "Alert deleted"
+          },
+          "403": {
+            "description": "Forbidden — missing or wrong X-Alert-Token. Same response for non-existent alert ids to prevent enumeration."
+          }
+        },
+        "security": [
+          {
+            "AlertToken": []
+          }
+        ]
       }
     },
     "/api/alerts/triggered": {
@@ -206,8 +341,15 @@
         "summary": "Get recently triggered alerts",
         "description": "Returns alerts triggered within the last 60 seconds (for polling)",
         "responses": {
-          "200": { "description": "Array of triggered alerts" }
-        }
+          "200": {
+            "description": "Array of triggered alerts"
+          }
+        },
+        "security": [
+          {
+            "AlertTokens": []
+          }
+        ]
       }
     },
     "/api/alerts/ack": {
@@ -220,12 +362,20 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["ids"],
+                "required": [
+                  "ids"
+                ],
                 "properties": {
                   "ids": {
                     "type": "array",
-                    "items": { "type": "integer" },
-                    "example": [1, 2, 3]
+                    "items": {
+                      "type": "integer"
+                    },
+                    "example": [
+                      1,
+                      2,
+                      3
+                    ]
                   }
                 }
               }
@@ -233,9 +383,40 @@
           }
         },
         "responses": {
-          "200": { "description": "Acknowledgement count returned" },
-          "400": { "description": "ids array missing or empty" }
-        }
+          "200": {
+            "description": "Acknowledgement count returned"
+          },
+          "400": {
+            "description": "ids array missing or empty"
+          },
+          "429": {
+            "description": "Too Many Requests — rate limit exceeded"
+          },
+          "413": {
+            "description": "Request body exceeds 64 KB"
+          }
+        },
+        "security": [
+          {
+            "AlertToken": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AlertToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Alert-Token",
+        "description": "Per-alert HMAC token returned once by POST /api/alerts. Required to delete or acknowledge that specific alert."
+      },
+      "AlertTokens": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Alert-Tokens",
+        "description": "Comma-separated list of per-alert HMAC tokens. Required to list alerts owned by the caller."
       }
     }
   }
