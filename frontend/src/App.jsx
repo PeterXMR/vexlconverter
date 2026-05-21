@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from 'react';
+import { useState, Suspense, lazy } from 'react';
 import ModeSwitch from './components/ModeSwitch';
 import Converter from './components/Converter';
 import ErrorBoundary from './components/ErrorBoundary';
