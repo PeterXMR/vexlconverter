@@ -1,6 +1,6 @@
 # Vexl Converter
 
-Vexl Converter — a Bitcoin & cryptocurrency conversion platform with live prices, historical charts, and user-configurable alerts.
+Vexl Converter — Fiat & cryptocurrency conversion platform with live prices, historical charts, and user-configurable alerts.
 
 🌐 **[Live Demo](https://vexlconverter.vercel.app)** · 🔌 **[API health](https://vexlconverter-api.onrender.com/api/health)**
 
