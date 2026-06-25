@@ -42,6 +42,10 @@
     "@vitest/coverage-v8": "^4.1.9",
     "jsdom": "^29.1.1",
     "vite": "^8.0.16",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "form-data": "^4.0.6",
+    "undici": "^7.28.0"
   }
 }
