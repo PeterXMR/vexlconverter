@@ -6,5 +6,5 @@ psycopg[binary]==3.3.4
 requests==2.34.2
 python-dotenv==1.2.2
 APScheduler==3.11.2
-SQLAlchemy==2.0.50
+SQLAlchemy==2.0.51
 gunicorn==26.0.0
