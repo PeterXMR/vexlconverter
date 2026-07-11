@@ -313,7 +313,6 @@ function Converter({ mode }) {
     }
     // fetchAdditionalRates is defined below in the same component body and
     // captures additionalCurrencies.length via this callback's closure.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [additionalCurrencies.length]);
 
   // Use the backend's /api/fiat-rates proxy (which fronts ExchangeRate-API).
@@ -711,7 +710,7 @@ function Converter({ mode }) {
             />
             <div className="currency-list">
               {filtered.length === 0 ? (
-                <div className="currency-list-empty">No currencies match "{pickerFilter}"</div>
+                <div className="currency-list-empty">No currencies match &ldquo;{pickerFilter}&rdquo;</div>
               ) : (
                 filtered.map((currency) => (
                   <button key={currency.code} className="currency-option" onClick={() => addCurrency(currency)} type="button">
