@@ -30,10 +30,6 @@ export default [
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      // New rules in eslint-plugin-react-hooks 7.x recommended; existing code
-      // trips them — keep as warnings until the flagged components are fixed.
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/immutability': 'warn',
       // React 17+ JSX transform — no need to import React in scope.
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',

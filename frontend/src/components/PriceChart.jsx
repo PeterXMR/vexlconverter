@@ -63,6 +63,9 @@ function PriceChart() {
   }, []);
 
   useEffect(() => {
+    // Data-fetch effect: fetchHistory sets loading state synchronously before
+    // the request, which the compiler-based rule flags. Intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHistory(period);
 
     // Auto-refresh every 60s when viewing the 24h period
