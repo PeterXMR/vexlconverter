@@ -138,6 +138,9 @@ function AlertManager() {
       if (res.data.success) setCryptos(res.data.data);
     }).catch(() => {});
 
+    // Data-fetch effect: fetchAlerts clears the list synchronously when no
+    // tokens are stored, which the compiler-based rule flags. Intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAlerts();
 
     // Check triggered immediately on mount (not after 30s)

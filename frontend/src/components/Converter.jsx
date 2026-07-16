@@ -236,14 +236,6 @@ function Converter({ mode }) {
 
   const debounceTimer = useRef(null);
 
-  // ─── Fetch cryptos and prices ──────────────
-  useEffect(() => {
-    fetchCryptos();
-    fetchAllPrices();
-    const interval = setInterval(fetchAllPrices, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
   const fetchCryptos = async () => {
     try {
       const response = await axios.get(`${API_URL}/cryptos`);
@@ -269,6 +261,17 @@ function Converter({ mode }) {
     }
   };
 
+  // ─── Fetch cryptos and prices ──────────────
+  useEffect(() => {
+    // Data-fetch effect: both fetchers only set state after their awaits
+    // resolve, but the compiler-based rule can't prove that. Intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchCryptos();
+    fetchAllPrices();
+    const interval = setInterval(fetchAllPrices, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const formatNumber = (num, decimals = 2) => {
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: decimals,
@@ -282,6 +285,34 @@ function Converter({ mode }) {
   };
 
   // ─── BTC MODE ──────────────────────────────
+
+  // Use the backend's /api/fiat-rates proxy (which fronts ExchangeRate-API).
+  // Rationale: CoinGecko's /simple/price vs_currencies list is curated to ~30 fiats
+  // and excludes some that our UI offers (e.g. PYG Paraguayan Guarani). Computing
+  // BTC → USD → target_fiat via a dedicated fiat-rates provider gives full coverage
+  // and consistent cross-rates. Proxying through the backend keeps the call
+  // inside our CSP and avoids leaking visitor IPs to a third party.
+  const fetchAdditionalRates = async (btcValue, btcUsdRate) => {
+    try {
+      const usdToFiat = await getUsdToFiatRates();
+      setAdditionalCurrencies(prev =>
+        prev.map(curr => {
+          const usdRate = usdToFiat[curr.code];
+          if (typeof usdRate !== 'number' || usdRate <= 0) {
+            return { ...curr, rate: null, amount: null };
+          }
+          const btcToFiat = btcUsdRate * usdRate;
+          return {
+            ...curr,
+            rate: btcToFiat,
+            amount: (btcToFiat * btcValue).toFixed(2),
+          };
+        })
+      );
+    } catch (err) {
+      console.error('Failed to fetch fiat rates:', err);
+    }
+  };
 
   const performBtcConversion = useCallback(async (btcValue) => {
     if (!btcValue || btcValue <= 0) {
@@ -311,37 +342,7 @@ function Converter({ mode }) {
     } finally {
       setLoading(false);
     }
-    // fetchAdditionalRates is defined below in the same component body and
-    // captures additionalCurrencies.length via this callback's closure.
   }, [additionalCurrencies.length]);
-
-  // Use the backend's /api/fiat-rates proxy (which fronts ExchangeRate-API).
-  // Rationale: CoinGecko's /simple/price vs_currencies list is curated to ~30 fiats
-  // and excludes some that our UI offers (e.g. PYG Paraguayan Guarani). Computing
-  // BTC → USD → target_fiat via a dedicated fiat-rates provider gives full coverage
-  // and consistent cross-rates. Proxying through the backend keeps the call
-  // inside our CSP and avoids leaking visitor IPs to a third party.
-  const fetchAdditionalRates = async (btcValue, btcUsdRate) => {
-    try {
-      const usdToFiat = await getUsdToFiatRates();
-      setAdditionalCurrencies(prev =>
-        prev.map(curr => {
-          const usdRate = usdToFiat[curr.code];
-          if (typeof usdRate !== 'number' || usdRate <= 0) {
-            return { ...curr, rate: null, amount: null };
-          }
-          const btcToFiat = btcUsdRate * usdRate;
-          return {
-            ...curr,
-            rate: btcToFiat,
-            amount: (btcToFiat * btcValue).toFixed(2),
-          };
-        })
-      );
-    } catch (err) {
-      console.error('Failed to fetch fiat rates:', err);
-    }
-  };
 
   const handleBtcChange = (e) => {
     let value = e.target.value;
