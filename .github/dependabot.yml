@@ -9,6 +9,12 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    groups:
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-plugin-*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
