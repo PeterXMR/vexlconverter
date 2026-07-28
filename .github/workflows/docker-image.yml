@@ -105,6 +105,17 @@ jobs:
           # decided below, so the exit code here is not the signal we want.
           npm audit --json > "$report" || true
 
+          # ...but discarding the exit code means a registry outage or a
+          # truncated report would yield zero findings and pass the gate
+          # silently. Require a well-formed audit report before an empty
+          # result is allowed to mean "clean", so this step fails closed.
+          if ! jq -e 'has("auditReportVersion") and (.vulnerabilities | type == "object")' \
+               "$report" > /dev/null 2>&1; then
+            echo "npm audit did not produce a usable report; refusing to pass the gate."
+            head -c 2000 "$report" || true
+            exit 1
+          fi
+
           jq -r --arg allow "$ALLOWED_ADVISORIES" '
             ($allow | split(",") | map(ascii_downcase)) as $allowed
             | [ .vulnerabilities[]?.via[]?
