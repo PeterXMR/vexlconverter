@@ -27,10 +27,17 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install backend dependencies
+        # ruff is pinned to a patch-level range. An unpinned `pip install ruff`
+        # made lint results depend on the release of the day: ruff 0.16.0
+        # widened its default rule set and turned CI red on unchanged backend
+        # code that 0.15.22 had passed. backend/ruff.toml now declares the rule
+        # selection explicitly, and this pin keeps rule *behaviour* stable too.
+        # Bump deliberately — dependabot does not track pip installs in workflow
+        # run steps.
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-          pip install pytest ruff pip-audit
+          pip install pytest 'ruff~=0.16.0' pip-audit
 
       - name: Audit backend dependencies (fail on any known vuln)
         # PYSEC-2024-271 (CVE-2024-1681): flask-cors CRLF log injection.
@@ -70,7 +77,57 @@ jobs:
 
       - name: Audit frontend dependencies (fail on high+)
         working-directory: frontend
-        run: npm audit --audit-level=high
+        # `npm audit` has no native allowlist, so this mirrors the backend's
+        # `pip-audit --ignore-vuln` approach: high/critical advisories are read
+        # out of the JSON report and matched against ALLOWED_ADVISORIES. Every
+        # advisory not listed there still fails the build.
+        #
+        # GHSA-mh99-v99m-4gvg (brace-expansion: DoS via unbounded expansion).
+        # Reachable only through the ESLint 9 dev toolchain — eslint itself,
+        # @eslint/eslintrc and eslint-plugin-react all depend on minimatch 3.x,
+        # which pulls brace-expansion 1.x. It is a lint-time dependency and is
+        # never bundled into the served frontend. The only patched release is
+        # brace-expansion 5.0.8, whose CJS build exports a named `expand` rather
+        # than a callable default, so pinning it via npm `overrides` breaks
+        # minimatch 3.x at runtime ("TypeError: expand is not a function").
+        # ESLint 10 depends on a fixed minimatch, but eslint-plugin-react 7.37.5
+        # still caps its peer range at eslint ^9.7. Drop this entry once
+        # eslint-plugin-react ships ESLint 10 support and the eslint 10 bump can
+        # be unignored. https://github.com/advisories/GHSA-mh99-v99m-4gvg
+        env:
+          ALLOWED_ADVISORIES: GHSA-mh99-v99m-4gvg
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/npm-audit.json"
+          unallowed="$RUNNER_TEMP/npm-audit-unallowed.txt"
+
+          # npm audit exits non-zero whenever it finds anything; severity is
+          # decided below, so the exit code here is not the signal we want.
+          npm audit --json > "$report" || true
+
+          jq -r --arg allow "$ALLOWED_ADVISORIES" '
+            ($allow | split(",") | map(ascii_downcase)) as $allowed
+            | [ .vulnerabilities[]?.via[]?
+                | select(type == "object")
+                | select(.severity == "high" or .severity == "critical")
+                | { id: ((.url // "") | split("/") | last),
+                    name: .name,
+                    severity: .severity,
+                    title: .title }
+                | select((.id | ascii_downcase) as $id
+                         | ($allowed | index($id)) | not)
+              ]
+            | unique[]
+            | "\(.severity)\t\(.name)\t\(.id)\t\(.title)"
+          ' "$report" > "$unallowed"
+
+          if [ -s "$unallowed" ]; then
+            echo "High/critical advisories outside the allowlist:"
+            cat "$unallowed"
+            exit 1
+          fi
+
+          echo "No high/critical advisories outside the allowlist (${ALLOWED_ADVISORIES})."
 
       - name: Lint frontend with ESLint
         working-directory: frontend
