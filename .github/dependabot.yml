@@ -1,32 +1,105 @@
 version: 2
+
+# Grouping policy
+#
+# Ungrouped, Dependabot opens one PR per dependency, which produced nine open
+# PRs for what was really three changes. Worse, it splits changes that are only
+# correct when applied together: github/codeql-action/init and
+# .../analyze are pinned to the same SHA, and the action hard-fails on a
+# mismatched pair ("Loaded a configuration file for version '4.37.3', but
+# running version '4.37.0'"), so neither half could ever pass CI alone.
+#
+# Each ecosystem below therefore collapses its minor and patch bumps into a
+# single weekly PR. Major bumps deliberately stay outside the groups and arrive
+# individually: they are the ones that need real review, and one breaking major
+# should not hold the routine bumps hostage. jsdom 30 is the live example — it
+# requires node >=22 while CI pins node 20, so in an all-in-one group it would
+# have blocked four healthy frontend bumps.
+#
+# Packages that must move in lockstep (eslint, codeql-action) get their own
+# group with no update-types filter, so even a major lands as one coordinated
+# PR instead of fragmenting.
+#
+# Groups apply to version updates only, which is the Dependabot default.
+# Security advisories keep arriving as their own focused PRs — they should not
+# wait on a weekly batch.
+
 updates:
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
       interval: "weekly"
+    groups:
+      backend-python:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
     groups:
+      # Listed first: Dependabot assigns a dependency to the first group it
+      # matches. eslint and its plugins share a peer-dependency range, so a
+      # split bump leaves the config unloadable.
       eslint:
         patterns:
           - "eslint"
           - "@eslint/*"
           - "eslint-plugin-*"
+      frontend-npm:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-plugin-*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # No update-types filter: init and analyze must stay on one SHA at every
+      # version, majors included.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
+      github-actions:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "github/codeql-action*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker"
     directory: "/backend"
     schedule:
       interval: "weekly"
+    groups:
+      backend-docker:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker"
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    groups:
+      frontend-docker:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
