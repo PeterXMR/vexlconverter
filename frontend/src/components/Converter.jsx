@@ -626,15 +626,15 @@ function Converter({ mode }) {
 
       <div className="output-section">
         <div className="output-field">
-          <label><span className="icon">$</span>USD Value</label>
-          <input type="text" className="output-input" value={usdAmount || '\u00A0'} readOnly placeholder="0.00" />
+          <label htmlFor="btc-usd-output"><span className="icon">$</span>USD Value</label>
+          <input id="btc-usd-output" type="text" className="output-input" value={usdAmount || '\u00A0'} readOnly placeholder="0.00" />
           <div className="btc-rate">
             {allPrices.bitcoin ? `1 BTC = $${formatNumber(allPrices.bitcoin.price_usd)}` : '\u00A0'}
           </div>
         </div>
         <div className="output-field">
-          <label><span className="icon">€</span>EUR Value</label>
-          <input type="text" className="output-input" value={eurAmount || '\u00A0'} readOnly placeholder="0.00" />
+          <label htmlFor="btc-eur-output"><span className="icon">€</span>EUR Value</label>
+          <input id="btc-eur-output" type="text" className="output-input" value={eurAmount || '\u00A0'} readOnly placeholder="0.00" />
           <div className="btc-rate">
             {allPrices.bitcoin ? `1 BTC = €${formatNumber(allPrices.bitcoin.price_eur)}` : '\u00A0'}
           </div>
