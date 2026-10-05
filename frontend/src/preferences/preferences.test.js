@@ -77,3 +77,27 @@ test('a stored value that does not decode reads as its default', async () => {
 
   expect(preferences).toEqual({ ...DEFAULT_PICKS, mode: 'crypto', unit: 'BTC' });
 });
+
+test('a currency the app no longer offers is dropped from the stored list and written back', async () => {
+  const { store, written } = fakeStore({
+    isNewIdentity: false,
+    rows: { currencyList: '["CZK","XYZ","USD"]' },
+  });
+
+  const preferences = await loadPreferences(store);
+
+  expect(preferences.currencyList).toEqual(['CZK', 'USD']);
+  expect(written).toEqual({ currencyList: '["CZK","USD"]' });
+});
+
+test('a fiat pick pointing at a currency the app no longer offers resets to its default', async () => {
+  const { store, written } = fakeStore({
+    isNewIdentity: false,
+    rows: { fiatSource: 'XYZ', fiatTarget: 'GBP', allTargetType: 'fiat', allTargetValue: 'XYZ' },
+  });
+
+  const preferences = await loadPreferences(store);
+
+  expect(preferences).toMatchObject({ fiatSource: 'USD', fiatTarget: 'GBP', allTargetType: 'fiat', allTargetValue: 'USD' });
+  expect(written).toEqual({ fiatSource: 'USD', allTargetType: 'fiat', allTargetValue: 'USD' });
+});
