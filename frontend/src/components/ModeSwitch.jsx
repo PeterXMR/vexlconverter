@@ -7,7 +7,19 @@ const MODES = [
   { key: 'both', label: 'All', desc: 'Any to any' },
 ];
 
-function ModeSwitch({ mode, onModeChange }) {
+function ModeSwitch({ mode, onModeChange, loading }) {
+  if (loading) {
+    return (
+      <div className="mode-switch" role="tablist" aria-label="Conversion mode" aria-busy="true">
+        {MODES.map((m) => (
+          <span key={m.key} className="mode-btn mode-skeleton" aria-hidden="true">
+            {m.label}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="mode-switch" role="tablist" aria-label="Conversion mode">
       {MODES.map((m) => {

@@ -14,3 +14,11 @@ vi.mock('axios', () => ({
   post: vi.fn(() => Promise.resolve({ data: {} })),
   delete: vi.fn(() => Promise.resolve({ data: {} })),
 }));
+
+vi.mock('./preferences/evoluStore.js', () => ({
+  openEvoluStore: async () => ({
+    isNewIdentity: true,
+    readSettings: async () => ({}),
+    writeSetting: () => {},
+  }),
+}));

@@ -1,20 +1,21 @@
-import { useState, Suspense, lazy } from 'react';
+import { Suspense, lazy } from 'react';
 import ModeSwitch from './components/ModeSwitch';
 import Converter from './components/Converter';
 import ErrorBoundary from './components/ErrorBoundary';
+import { PreferencesProvider, usePreference } from './preferences/PreferencesProvider';
 import './App.css';
 
 const AlertManager = lazy(() => import('./components/AlertManager'));
 const PriceChart = lazy(() => import('./components/PriceChart'));
 
-function App() {
-  const [mode, setMode] = useState('btc');
+function Shell() {
+  const [mode, setMode, modeLoading] = usePreference('mode');
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="wordmark">Vexl Converter</div>
-        <ModeSwitch mode={mode} onModeChange={setMode} />
+        <ModeSwitch mode={mode} onModeChange={setMode} loading={modeLoading} />
       </header>
       <main className="workspace">
         <section className="convert-pane">
@@ -63,6 +64,14 @@ function App() {
         </a>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <PreferencesProvider>
+      <Shell />
+    </PreferencesProvider>
   );
 }
 

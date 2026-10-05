@@ -26,4 +26,7 @@ export const test = base.extend({
   },
 });
 
+export const waitForPicksStored = (page) =>
+  page.waitForFunction(() => globalThis.__vexlE2E?.pendingWrites === 0);
+
 export { expect };

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { usePreference } from '../preferences/PreferencesProvider';
 import './Converter.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
@@ -208,7 +209,7 @@ function Converter({ mode }) {
 
   // ─── BTC mode state ────────────────────────
   const [btcAmount, setBtcAmount] = useState('');
-  const [unit, setUnit] = useState('BTC');
+  const [unit, setUnit, unitLoading] = usePreference('unit');
   const [currencyList, setCurrencyList] = useState(DEFAULT_CURRENCY_LIST);
   const [usdToFiat, setUsdToFiat] = useState(null);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
@@ -591,9 +592,15 @@ function Converter({ mode }) {
             <span className="icon">₿</span>
             Enter {unit} Amount
           </label>
-          <button className="unit-toggle" onClick={toggleUnit} type="button">
-            Switch to {unit === 'BTC' ? 'Sats' : 'BTC'}
-          </button>
+          {unitLoading ? (
+            <span className="unit-toggle unit-skeleton" aria-hidden="true">
+              Switch to Sats
+            </span>
+          ) : (
+            <button className="unit-toggle" onClick={toggleUnit} type="button">
+              Switch to {unit === 'BTC' ? 'Sats' : 'BTC'}
+            </button>
+          )}
         </div>
         <input
           id="btc-input"
