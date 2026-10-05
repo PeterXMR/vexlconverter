@@ -9,6 +9,9 @@ export default defineConfig({
     strictPort: false,
     open: false,
   },
+  optimizeDeps: {
+    exclude: ['@evolu/sqlite-wasm', 'kysely'],
+  },
   preview: {
     headers: process.env.VEXL_E2E ? productionPreviewHeaders() : undefined,
   },

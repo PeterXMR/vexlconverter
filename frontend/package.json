@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@evolu/common": "^8.18.0",
+    "@evolu/web": "^3.4.1",
     "axios": "^1.20.0",
     "chart.js": "^4.4.7",
     "react": "^19.3.0",

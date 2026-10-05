@@ -39,3 +39,16 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+.mode-skeleton {
+  color: transparent;
+  background: var(--border-dim);
+  cursor: default;
+  animation: mode-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mode-skeleton-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}

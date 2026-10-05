@@ -50,7 +50,12 @@ export default defineConfig({
       name: 'app',
       command: `npm run build && npx vite preview --port ${APP_PORT} --strictPort`,
       url: `http://localhost:${APP_PORT}`,
-      env: { VITE_API_URL: PRODUCTION_API_URL, VEXL_E2E: '1' },
+      env: {
+        VITE_API_URL: PRODUCTION_API_URL,
+        VITE_EVOLU_SERVER_URLS: `ws://localhost:${RELAY_PORT}`,
+        VITE_E2E: '1',
+        VEXL_E2E: '1',
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },

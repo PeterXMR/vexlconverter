@@ -95,6 +95,12 @@ label {
   transition: background-color 120ms ease;
 }
 
+.unit-skeleton {
+  color: transparent;
+  background: var(--border-dim);
+  cursor: default;
+}
+
 .unit-toggle:hover {
   background: rgba(252, 3, 119, 0.25);
 }
