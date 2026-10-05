@@ -1,3 +1,5 @@
+import { FIAT_CURRENCIES } from '../fiatCurrencies';
+
 const oneOf = (allowed, fallback) => ({
   fallback,
   decode: (raw) => (allowed.includes(raw) ? raw : undefined),
@@ -55,11 +57,50 @@ export const DEFAULTS = Object.fromEntries(KEYS.map((key) => [key, PREFERENCES[k
 
 export const encodePreference = (key, value) => PREFERENCES[key].encode(value);
 
+const OFFERED_FIAT = new Set(FIAT_CURRENCIES.map(({ code }) => code));
+
+const PAIRS = [
+  ['allSourceType', 'allSourceValue'],
+  ['allTargetType', 'allTargetValue'],
+];
+
+const cleanFiat = (values) => {
+  const cleaned = { ...values };
+  const changed = new Set();
+  const reset = (key) => {
+    cleaned[key] = DEFAULTS[key];
+    changed.add(key);
+  };
+
+  const offeredList = values.currencyList.filter((code) => OFFERED_FIAT.has(code));
+  if (offeredList.length !== values.currencyList.length) {
+    cleaned.currencyList = offeredList;
+    changed.add('currencyList');
+  }
+  for (const key of ['fiatSource', 'fiatTarget']) {
+    if (!OFFERED_FIAT.has(values[key])) reset(key);
+  }
+  for (const [typeKey, valueKey] of PAIRS) {
+    if (values[typeKey] === 'fiat' && !OFFERED_FIAT.has(values[valueKey])) {
+      reset(typeKey);
+      reset(valueKey);
+    }
+  }
+  return { cleaned, changed };
+};
+
+const writeBack = (store, values, keys) => {
+  for (const key of keys) store.writeSetting(key, encodePreference(key, values[key]));
+};
+
 export async function loadPreferences(store) {
   if (store.isNewIdentity) {
-    for (const key of KEYS) store.writeSetting(key, encodePreference(key, DEFAULTS[key]));
+    writeBack(store, DEFAULTS, KEYS);
     return { ...DEFAULTS };
   }
   const rows = await store.readSettings();
-  return Object.fromEntries(KEYS.map((key) => [key, PREFERENCES[key].decode(rows[key]) ?? DEFAULTS[key]]));
+  const decoded = Object.fromEntries(KEYS.map((key) => [key, PREFERENCES[key].decode(rows[key]) ?? DEFAULTS[key]]));
+  const { cleaned, changed } = cleanFiat(decoded);
+  writeBack(store, cleaned, changed);
+  return cleaned;
 }
