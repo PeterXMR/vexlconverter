@@ -14,13 +14,51 @@ const fakeStore = ({ isNewIdentity, rows = {} }) => {
   };
 };
 
-test('a new identity is given the default mode and unit', async () => {
+const DEFAULT_PICKS = {
+  mode: 'btc',
+  unit: 'BTC',
+  currencyList: ['USD', 'EUR'],
+  fiatSource: 'USD',
+  fiatTarget: 'EUR',
+  cryptoSource: 'bitcoin',
+  cryptoTarget: 'ethereum',
+  allSourceType: 'crypto',
+  allSourceValue: 'bitcoin',
+  allTargetType: 'fiat',
+  allTargetValue: 'USD',
+  chartPeriod: '7d',
+  chartUsd: true,
+  chartEur: true,
+  alertCoin: 'bitcoin',
+  alertCurrency: 'usd',
+  alertDirection: 'above',
+};
+
+test('a new identity is given every default', async () => {
   const { store, written } = fakeStore({ isNewIdentity: true });
 
   const preferences = await loadPreferences(store);
 
-  expect(written).toEqual({ mode: 'btc', unit: 'BTC' });
-  expect(preferences).toEqual({ mode: 'btc', unit: 'BTC' });
+  expect(written).toEqual({
+    mode: 'btc',
+    unit: 'BTC',
+    currencyList: '["USD","EUR"]',
+    fiatSource: 'USD',
+    fiatTarget: 'EUR',
+    cryptoSource: 'bitcoin',
+    cryptoTarget: 'ethereum',
+    allSourceType: 'crypto',
+    allSourceValue: 'bitcoin',
+    allTargetType: 'fiat',
+    allTargetValue: 'USD',
+    chartPeriod: '7d',
+    chartUsd: 'true',
+    chartEur: 'true',
+    alertCoin: 'bitcoin',
+    alertCurrency: 'usd',
+    alertDirection: 'above',
+  });
+  expect(preferences).toEqual(DEFAULT_PICKS);
 });
 
 test('an existing identity keeps its own picks and nothing is written', async () => {
@@ -29,7 +67,7 @@ test('an existing identity keeps its own picks and nothing is written', async ()
   const preferences = await loadPreferences(store);
 
   expect(written).toEqual({});
-  expect(preferences).toEqual({ mode: 'fiat', unit: 'SATS' });
+  expect(preferences).toEqual({ ...DEFAULT_PICKS, mode: 'fiat', unit: 'SATS' });
 });
 
 test('a stored value that does not decode reads as its default', async () => {
@@ -37,5 +75,5 @@ test('a stored value that does not decode reads as its default', async () => {
 
   const preferences = await loadPreferences(store);
 
-  expect(preferences).toEqual({ mode: 'crypto', unit: 'BTC' });
+  expect(preferences).toEqual({ ...DEFAULT_PICKS, mode: 'crypto', unit: 'BTC' });
 });
