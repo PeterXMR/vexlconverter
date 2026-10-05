@@ -1,4 +1,4 @@
-import { loadPreferences } from './preferences';
+import { cleanCoinPreferences, loadPreferences } from './preferences';
 
 const fakeStore = ({ isNewIdentity, rows = {} }) => {
   const written = {};
@@ -100,4 +100,36 @@ test('a fiat pick pointing at a currency the app no longer offers resets to its 
 
   expect(preferences).toMatchObject({ fiatSource: 'USD', fiatTarget: 'GBP', allTargetType: 'fiat', allTargetValue: 'USD' });
   expect(written).toEqual({ fiatSource: 'USD', allTargetType: 'fiat', allTargetValue: 'USD' });
+});
+
+const STALE_COIN_PICKS = {
+  ...DEFAULT_PICKS,
+  cryptoSource: 'dogecoin',
+  cryptoTarget: 'bitcoin',
+  allSourceType: 'crypto',
+  allSourceValue: 'dogecoin',
+  alertCoin: 'dogecoin',
+};
+
+test('coin picks the app no longer offers reset to their defaults once the coin list loads', () => {
+  const { store, written } = fakeStore({ isNewIdentity: false });
+
+  const preferences = cleanCoinPreferences(store, STALE_COIN_PICKS, ['bitcoin', 'ethereum']);
+
+  expect(preferences).toEqual({ ...DEFAULT_PICKS, cryptoTarget: 'bitcoin' });
+  expect(written).toEqual({
+    cryptoSource: 'bitcoin',
+    allSourceType: 'crypto',
+    allSourceValue: 'bitcoin',
+    alertCoin: 'bitcoin',
+  });
+});
+
+test('coin picks are left alone when the coin list is empty', () => {
+  const { store, written } = fakeStore({ isNewIdentity: false });
+
+  const preferences = cleanCoinPreferences(store, STALE_COIN_PICKS, []);
+
+  expect(preferences).toEqual(STALE_COIN_PICKS);
+  expect(written).toEqual({});
 });
