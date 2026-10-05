@@ -48,8 +48,8 @@ function Converter({ mode }) {
   const [pickerFilter, setPickerFilter] = useState('');
 
   // ─── Crypto mode state ─────────────────────
-  const [sourceCrypto, setSourceCrypto] = useState('bitcoin');
-  const [targetCrypto, setTargetCrypto] = useState('ethereum');
+  const [sourceCrypto, setSourceCrypto] = usePreference('cryptoSource');
+  const [targetCrypto, setTargetCrypto] = usePreference('cryptoTarget');
   const [cryptoSourceAmount, setCryptoSourceAmount] = useState('');
   const [cryptoTargetAmount, setCryptoTargetAmount] = useState('');
 
