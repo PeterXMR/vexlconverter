@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { DEFAULTS, loadPreferences } from './preferences';
+import { DEFAULTS, cleanCoinPreferences, encodePreference, loadPreferences } from './preferences';
 import { e2eHooks } from './e2eHooks';
 
 const START_TIMEOUT_MS = 10000;
@@ -43,13 +43,23 @@ export function PreferencesProvider({ children }) {
     };
   }, []);
 
+  const valuesRef = useRef(values);
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+
   const setPreference = useCallback((key, value) => {
     setValues((previous) => ({ ...previous, [key]: value }));
-    storeRef.current?.writeSetting(key, value);
+    storeRef.current?.writeSetting(key, encodePreference(key, value));
+  }, []);
+
+  const cleanCoins = useCallback((coinIds) => {
+    const store = storeRef.current ?? { writeSetting: () => {} };
+    setValues(cleanCoinPreferences(store, valuesRef.current, coinIds));
   }, []);
 
   return (
-    <PreferencesContext.Provider value={{ status, oneTab, values, setPreference }}>
+    <PreferencesContext.Provider value={{ status, oneTab, values, setPreference, cleanCoins }}>
       {children}
     </PreferencesContext.Provider>
   );
@@ -59,4 +69,8 @@ export function usePreference(key) {
   const { status, values, setPreference } = useContext(PreferencesContext);
   const setValue = useCallback((value) => setPreference(key, value), [key, setPreference]);
   return [values[key], setValue, status === 'loading'];
+}
+
+export function useCleanCoinPreferences() {
+  return useContext(PreferencesContext).cleanCoins;
 }

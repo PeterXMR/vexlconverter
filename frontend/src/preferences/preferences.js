@@ -64,14 +64,26 @@ const PAIRS = [
   ['allTargetType', 'allTargetValue'],
 ];
 
-const cleanFiat = (values) => {
+const cleaner = (values) => {
   const cleaned = { ...values };
   const changed = new Set();
   const reset = (key) => {
     cleaned[key] = DEFAULTS[key];
     changed.add(key);
   };
+  const resetPairsOfType = (type, isOffered) => {
+    for (const [typeKey, valueKey] of PAIRS) {
+      if (values[typeKey] === type && !isOffered(values[valueKey])) {
+        reset(typeKey);
+        reset(valueKey);
+      }
+    }
+  };
+  return { cleaned, changed, reset, resetPairsOfType };
+};
 
+const cleanFiat = (values) => {
+  const { cleaned, changed, reset, resetPairsOfType } = cleaner(values);
   const offeredList = values.currencyList.filter((code) => OFFERED_FIAT.has(code));
   if (offeredList.length !== values.currencyList.length) {
     cleaned.currencyList = offeredList;
@@ -80,12 +92,7 @@ const cleanFiat = (values) => {
   for (const key of ['fiatSource', 'fiatTarget']) {
     if (!OFFERED_FIAT.has(values[key])) reset(key);
   }
-  for (const [typeKey, valueKey] of PAIRS) {
-    if (values[typeKey] === 'fiat' && !OFFERED_FIAT.has(values[valueKey])) {
-      reset(typeKey);
-      reset(valueKey);
-    }
-  }
+  resetPairsOfType('fiat', (code) => OFFERED_FIAT.has(code));
   return { cleaned, changed };
 };
 
@@ -101,6 +108,18 @@ export async function loadPreferences(store) {
   const rows = await store.readSettings();
   const decoded = Object.fromEntries(KEYS.map((key) => [key, PREFERENCES[key].decode(rows[key]) ?? DEFAULTS[key]]));
   const { cleaned, changed } = cleanFiat(decoded);
+  writeBack(store, cleaned, changed);
+  return cleaned;
+}
+
+export function cleanCoinPreferences(store, values, coinIds) {
+  if (coinIds.length === 0) return values;
+  const offered = new Set(coinIds);
+  const { cleaned, changed, reset, resetPairsOfType } = cleaner(values);
+  for (const key of ['cryptoSource', 'cryptoTarget', 'alertCoin']) {
+    if (!offered.has(values[key])) reset(key);
+  }
+  resetPairsOfType('crypto', (coin) => offered.has(coin));
   writeBack(store, cleaned, changed);
   return cleaned;
 }
