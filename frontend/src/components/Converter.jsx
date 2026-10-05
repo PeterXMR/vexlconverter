@@ -524,11 +524,12 @@ function Converter({ mode }) {
       <div className="convert-row">
         <div className="input-section">
           <div className="input-header">
-            <label>
-              <span className="icon">⟠</span>
+            <label htmlFor="crypto-source">
+              <span className="icon" aria-hidden="true">⟠</span>
               From
             </label>
             <select
+              id="crypto-source"
               className="crypto-dropdown"
               value={sourceCrypto}
               onChange={(e) => {
@@ -578,11 +579,12 @@ function Converter({ mode }) {
 
         <div className="input-section">
           <div className="input-header">
-            <label>
-              <span className="icon">⟠</span>
+            <label htmlFor="crypto-target">
+              <span className="icon" aria-hidden="true">⟠</span>
               To
             </label>
             <select
+              id="crypto-target"
               className="crypto-dropdown"
               value={targetCrypto}
               onChange={(e) => {
