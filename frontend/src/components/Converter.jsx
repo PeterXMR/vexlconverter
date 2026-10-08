@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './Converter.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 const SATS_PER_BTC = 100000000;
+
+const DEFAULT_CURRENCY_LIST = ['USD', 'EUR'];
 
 // Fiat rates are proxied through our backend (/api/fiat-rates) so we don't
 // leak visitor IPs to a third party and the call stays inside our CSP
@@ -202,15 +204,13 @@ function Converter({ mode }) {
   const [cryptos, setCryptos] = useState([]);
   const [allPrices, setAllPrices] = useState({});
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // ─── BTC mode state ────────────────────────
   const [btcAmount, setBtcAmount] = useState('');
-  const [usdAmount, setUsdAmount] = useState('');
-  const [eurAmount, setEurAmount] = useState('');
   const [unit, setUnit] = useState('BTC');
-  const [additionalCurrencies, setAdditionalCurrencies] = useState([]);
+  const [currencyList, setCurrencyList] = useState(DEFAULT_CURRENCY_LIST);
+  const [usdToFiat, setUsdToFiat] = useState(null);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [pickerFilter, setPickerFilter] = useState('');
 
@@ -261,6 +261,14 @@ function Converter({ mode }) {
     }
   };
 
+  const fetchFiatRates = async () => {
+    try {
+      setUsdToFiat(await getUsdToFiatRates());
+    } catch (err) {
+      console.error('Failed to fetch fiat rates:', err);
+    }
+  };
+
   // ─── Fetch cryptos and prices ──────────────
   useEffect(() => {
     // Data-fetch effect: both fetchers only set state after their awaits
@@ -268,7 +276,11 @@ function Converter({ mode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCryptos();
     fetchAllPrices();
-    const interval = setInterval(fetchAllPrices, 30000);
+    fetchFiatRates();
+    const interval = setInterval(() => {
+      fetchAllPrices();
+      fetchFiatRates();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -286,92 +298,40 @@ function Converter({ mode }) {
 
   // ─── BTC MODE ──────────────────────────────
 
+  const btcValue = (() => {
+    const parsed = parseFloat(btcAmount);
+    if (isNaN(parsed) || parsed <= 0) return 0;
+    return unit === 'SATS' ? parsed / SATS_PER_BTC : parsed;
+  })();
+
+  const btcUsdPrice = allPrices.bitcoin?.price_usd;
+
   // Use the backend's /api/fiat-rates proxy (which fronts ExchangeRate-API).
   // Rationale: CoinGecko's /simple/price vs_currencies list is curated to ~30 fiats
   // and excludes some that our UI offers (e.g. PYG Paraguayan Guarani). Computing
   // BTC → USD → target_fiat via a dedicated fiat-rates provider gives full coverage
   // and consistent cross-rates. Proxying through the backend keeps the call
   // inside our CSP and avoids leaking visitor IPs to a third party.
-  const fetchAdditionalRates = async (btcValue, btcUsdRate) => {
-    try {
-      const usdToFiat = await getUsdToFiatRates();
-      setAdditionalCurrencies(prev =>
-        prev.map(curr => {
-          const usdRate = usdToFiat[curr.code];
-          if (typeof usdRate !== 'number' || usdRate <= 0) {
-            return { ...curr, rate: null, amount: null };
-          }
-          const btcToFiat = btcUsdRate * usdRate;
-          return {
-            ...curr,
-            rate: btcToFiat,
-            amount: (btcToFiat * btcValue).toFixed(2),
-          };
-        })
-      );
-    } catch (err) {
-      console.error('Failed to fetch fiat rates:', err);
+  const priceCurrencyRow = (code) => {
+    const currency = FIAT_CURRENCIES.find(c => c.code === code) ?? { code, symbol: code, name: code };
+    if (!btcUsdPrice || !usdToFiat) return { ...currency, rate: 0, amount: '' };
+    const usdRate = usdToFiat[code];
+    if (typeof usdRate !== 'number' || usdRate <= 0) {
+      return { ...currency, rate: null, amount: '' };
     }
+    const rate = btcUsdPrice * usdRate;
+    return { ...currency, rate, amount: btcValue > 0 ? (rate * btcValue).toFixed(2) : '' };
   };
 
-  const performBtcConversion = useCallback(async (btcValue) => {
-    if (!btcValue || btcValue <= 0) {
-      setUsdAmount('');
-      setEurAmount('');
-      setAdditionalCurrencies(prev => prev.map(c => ({ ...c, amount: '' })));
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await axios.post(`${API_URL}/convert`, {
-        crypto: 'bitcoin',
-        amount: btcValue
-      });
-      if (response.data.success) {
-        setUsdAmount(response.data.data.usd_amount.toFixed(2));
-        setEurAmount(response.data.data.eur_amount.toFixed(2));
-        if (additionalCurrencies.length > 0) {
-          const btcUsdRate = response.data.data.usd_amount / btcValue;
-          await fetchAdditionalRates(btcValue, btcUsdRate);
-        }
-        setError(null);
-      }
-    } catch (err) {
-      console.error('BTC conversion failed:', err);
-      setError('Conversion failed, please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [additionalCurrencies.length]);
+  const currencyRows = currencyList.map(priceCurrencyRow);
 
   const handleBtcChange = (e) => {
-    let value = e.target.value;
-    if (value === '') {
-      setBtcAmount('');
-      setUsdAmount('');
-      setEurAmount('');
-      setAdditionalCurrencies(prev =>
-        prev.map(c => ({ ...c, amount: null }))
-      );
-      return;
-    }
-    if (unit === 'BTC') {
-      if (!/^\d*\.?\d{0,8}$/.test(value)) return;
-    } else {
-      if (!/^\d*$/.test(value)) return;
+    const value = e.target.value;
+    if (value !== '') {
+      const pattern = unit === 'BTC' ? /^\d*\.?\d{0,8}$/ : /^\d*$/;
+      if (!pattern.test(value)) return;
     }
     setBtcAmount(value);
-    const numValue = parseFloat(value);
-    if (!isNaN(numValue) && numValue > 0) {
-      const btcValue = unit === 'SATS' ? numValue / SATS_PER_BTC : numValue;
-      debounce(performBtcConversion, btcValue);
-    } else {
-      setUsdAmount('');
-      setEurAmount('');
-      setAdditionalCurrencies(prev =>
-        prev.map(c => ({ ...c, amount: null }))
-      );
-    }
   };
 
   const toggleUnit = () => {
@@ -390,28 +350,13 @@ function Converter({ mode }) {
   };
 
   const addCurrency = (currency) => {
-    if (additionalCurrencies.find(c => c.code === currency.code)) return;
-    setAdditionalCurrencies(prev => [...prev, { ...currency, rate: 0, amount: '' }]);
+    setCurrencyList(prev => (prev.includes(currency.code) ? prev : [...prev, currency.code]));
     setShowCurrencyPicker(false);
     setPickerFilter('');
-
-    // Populate the newly added currency's rate immediately using the already
-    // computed USD amount. Going back through performBtcConversion would
-    // capture stale additionalCurrencies state in its useCallback closure.
-    const parsedBtc = parseFloat(btcAmount);
-    const parsedUsd = parseFloat(usdAmount);
-    if (
-      !isNaN(parsedBtc) && parsedBtc > 0 &&
-      !isNaN(parsedUsd) && parsedUsd > 0
-    ) {
-      const btcValue = unit === 'SATS' ? parsedBtc / SATS_PER_BTC : parsedBtc;
-      const btcUsdRate = parsedUsd / btcValue;
-      fetchAdditionalRates(btcValue, btcUsdRate);
-    }
   };
 
   const removeCurrency = (code) => {
-    setAdditionalCurrencies(prev => prev.filter(c => c.code !== code));
+    setCurrencyList(prev => prev.filter(c => c !== code));
   };
 
   // ─── CRYPTO MODE ───────────────────────────
@@ -587,9 +532,52 @@ function Converter({ mode }) {
   };
 
   // ─── Available currencies for BTC mode picker (exclude USD/EUR which are default)
-  const availableCurrenciesForPicker = FIAT_CURRENCIES.filter(
-    c => c.code !== 'USD' && c.code !== 'EUR'
-  );
+  const renderCurrencyRow = (row) => {
+    const outputId = `btc-${row.code.toLowerCase()}-output`;
+    const value = row.rate === null ? 'Rate unavailable' : row.amount || '\u00A0';
+    const rateText = row.rate > 0
+      ? `1 BTC = ${row.symbol}${formatNumber(row.rate)}`
+      : row.rate === null
+        ? 'No rate available'
+        : '\u00A0';
+
+    if (DEFAULT_CURRENCY_LIST.includes(row.code)) {
+      return (
+        <div key={row.code} className="output-field">
+          <label htmlFor={outputId}><span className="icon">{row.symbol}</span>{row.code} Value</label>
+          <input id={outputId} type="text" className="output-input" value={value} readOnly placeholder="0.00" />
+          <div className="btc-rate">{rateText}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={row.code} className="additional-currency">
+        <div className="output-field output-field-additional">
+          <label>
+            <span className="currency-label">
+              <span className="icon">{row.symbol}</span>
+              {row.code}
+            </span>
+            <button className="remove-currency-btn" onClick={() => removeCurrency(row.code)} type="button" title="Remove">✕</button>
+          </label>
+          <input
+            id={outputId}
+            type="text"
+            className="output-input"
+            aria-label={`${row.code} Value`}
+            value={value}
+            readOnly
+            placeholder="0.00"
+          />
+          <div className="btc-rate">{rateText}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const defaultRows = currencyRows.filter(row => DEFAULT_CURRENCY_LIST.includes(row.code));
+  const addedRows = currencyRows.filter(row => !DEFAULT_CURRENCY_LIST.includes(row.code));
 
   // ─── RENDER ────────────────────────────────
 
@@ -625,51 +613,12 @@ function Converter({ mode }) {
       <div className="arrow">↓</div>
 
       <div className="output-section">
-        <div className="output-field">
-          <label htmlFor="btc-usd-output"><span className="icon">$</span>USD Value</label>
-          <input id="btc-usd-output" type="text" className="output-input" value={usdAmount || '\u00A0'} readOnly placeholder="0.00" />
-          <div className="btc-rate">
-            {allPrices.bitcoin ? `1 BTC = $${formatNumber(allPrices.bitcoin.price_usd)}` : '\u00A0'}
-          </div>
-        </div>
-        <div className="output-field">
-          <label htmlFor="btc-eur-output"><span className="icon">€</span>EUR Value</label>
-          <input id="btc-eur-output" type="text" className="output-input" value={eurAmount || '\u00A0'} readOnly placeholder="0.00" />
-          <div className="btc-rate">
-            {allPrices.bitcoin ? `1 BTC = €${formatNumber(allPrices.bitcoin.price_eur)}` : '\u00A0'}
-          </div>
-        </div>
+        {defaultRows.map(renderCurrencyRow)}
       </div>
 
-      {additionalCurrencies.length > 0 && (
+      {addedRows.length > 0 && (
         <div className="additional-currencies-grid">
-          {additionalCurrencies.map((currency) => (
-            <div key={currency.code} className="additional-currency">
-              <div className="output-field output-field-additional">
-                <label>
-                  <span className="currency-label">
-                    <span className="icon">{currency.symbol}</span>
-                    {currency.code}
-                  </span>
-                  <button className="remove-currency-btn" onClick={() => removeCurrency(currency.code)} type="button" title="Remove">✕</button>
-                </label>
-                <input
-                  type="text"
-                  className="output-input"
-                  value={currency.amount ?? (currency.rate === null ? 'Rate unavailable' : '\u00A0')}
-                  readOnly
-                  placeholder="0.00"
-                />
-                <div className="btc-rate">
-                  {currency.rate > 0
-                    ? `1 BTC = ${currency.symbol}${formatNumber(currency.rate)}`
-                    : currency.rate === null
-                      ? 'No rate available'
-                      : '\u00A0'}
-                </div>
-              </div>
-            </div>
-          ))}
+          {addedRows.map(renderCurrencyRow)}
         </div>
       )}
 
@@ -689,8 +638,8 @@ function Converter({ mode }) {
       {showCurrencyPicker && (() => {
         // Filter by code (prefix), then by name (substring), both case-insensitive.
         const q = pickerFilter.trim().toLowerCase();
-        const candidates = availableCurrenciesForPicker
-          .filter(curr => !additionalCurrencies.find(c => c.code === curr.code));
+        const candidates = FIAT_CURRENCIES
+          .filter(curr => !currencyList.includes(curr.code));
         const filtered = q
           ? candidates.filter(c =>
               c.code.toLowerCase().includes(q) ||
@@ -726,8 +675,6 @@ function Converter({ mode }) {
           </div>
         );
       })()}
-
-      {loading && <div className="loading">Converting...</div>}
     </div>
   );
 
