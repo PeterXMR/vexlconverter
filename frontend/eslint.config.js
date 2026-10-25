@@ -48,7 +48,7 @@ export default [
     },
   },
   {
-    files: ['vite.config.js'],
+    files: ['vite.config.js', 'playwright.config.js', 'e2e/**/*.js'],
     languageOptions: {
       globals: { ...globals.node },
     },
